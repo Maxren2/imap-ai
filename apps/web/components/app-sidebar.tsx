@@ -26,7 +26,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: "Inbox", href: "/", icon: Inbox },
-  { title: "Chat", href: "/chat", icon: MessageCircle, soon: true },
+  { title: "Chat", href: "/chat", icon: MessageCircle },
   { title: "Assistant", href: "/rules", icon: Sparkles },
   { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive, soon: true },

@@ -16,6 +16,32 @@ model Account {
   mailboxes Mailbox[]
   rules     Rule[]
   senderStatuses SenderStatus[]
+  chat      Chat?
+}
+
+// Single persistent chat thread per account for v1 -- no multi-thread
+// history/rename/delete yet (inbox-zero has that; deferred here for scope).
+model Chat {
+  id        String        @id @default(cuid())
+  accountId String        @unique
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String   // "user" | "assistant" | "system"
+  // AI SDK UIMessage `parts` array (text/tool-call/tool-result parts),
+  // stored as-is rather than flattened to a plain string -- that's what
+  // the frontend needs back to re-render tool cards on reload.
+  parts     Json
+  createdAt DateTime @default(now())
+
+  @@index([chatId])
 }
 
 model Mailbox {
