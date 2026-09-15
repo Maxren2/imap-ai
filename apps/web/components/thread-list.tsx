@@ -5,7 +5,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Archive, Loader2 } from "lucide-react";
+import { Archive, Loader2, CheckCircle2 } from "lucide-react";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 import { archiveThreads, fetchMissingSnippets, getInboxThreads, type ThreadListMessagePlain } from "@/app/mail-actions";
 
@@ -190,7 +191,15 @@ export function ThreadList({
       </ul>
 
       {localMessages.length === 0 && (
-        <p className="px-3 py-8 text-center text-sm text-muted-foreground">Inbox zero. Nothing here.</p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CheckCircle2 />
+            </EmptyMedia>
+            <EmptyTitle>Inbox zero</EmptyTitle>
+            <EmptyDescription>Nothing here. Enjoy it while it lasts.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
       {localMessages.length > 0 && (

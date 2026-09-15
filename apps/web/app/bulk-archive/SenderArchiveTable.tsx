@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Archive, Loader2 } from "lucide-react";
+import { Archive, Loader2, CheckCircle2 } from "lucide-react";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { archiveSenders, listArchiveCandidates, type ArchiveCandidateRow } from "./actions";
 import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
@@ -139,7 +140,15 @@ export function SenderArchiveTable({ senders, totalCount }: { senders: ArchiveCa
         </TableBody>
       </Table>
       {rows.length === 0 && (
-        <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nothing left to archive.</p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CheckCircle2 />
+            </EmptyMedia>
+            <EmptyTitle>Nothing left to archive</EmptyTitle>
+            <EmptyDescription>Every sender's inbox mail has already been archived.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
       {hasMore && (
         <div className="flex justify-center border-t px-3 py-3">

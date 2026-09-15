@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, ExternalLink, Ban } from "lucide-react";
+import { Loader2, Mail, ExternalLink, Ban, MailX } from "lucide-react";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { unsubscribeSender, listSenders, type SenderRow } from "./actions";
 import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
@@ -126,7 +127,15 @@ export function SenderTable({ senders, totalCount }: { senders: SenderRow[]; tot
           </TableBody>
         </Table>
         {filtered.length === 0 && (
-          <p className="px-3 py-8 text-center text-sm text-muted-foreground">No senders in this view.</p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MailX />
+              </EmptyMedia>
+              <EmptyTitle>No senders in this view</EmptyTitle>
+              <EmptyDescription>Try a different tab, or check back once more mail syncs in.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
         {hasMore && (
           <div className="flex justify-center border-t px-3 py-3">
