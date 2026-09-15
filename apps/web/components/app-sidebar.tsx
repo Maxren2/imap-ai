@@ -30,7 +30,7 @@ const navItems: NavItem[] = [
   { title: "Assistant", href: "/rules", icon: Sparkles },
   { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive },
-  { title: "Analytics", href: "/stats", icon: BarChart3, soon: true },
+  { title: "Analytics", href: "/stats", icon: BarChart3 },
 ];
 
 export function AppSidebar() {
