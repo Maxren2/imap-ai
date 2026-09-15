@@ -13,9 +13,12 @@ Provider REST APIs (notably Gmail's) impose a fixed per-user quota-unit budget p
 Early stage, building up from the riskiest parts of the design first:
 
 1. **IMAP auth** (`npm run imap-test`) — authenticates to Gmail over IMAP via XOAUTH2 and lists recent messages.
-2. **Local mirror sync** (`npm run sync`) — incrementally syncs INBOX message metadata (envelope, flags, Gmail thread ID/labels) into a local Postgres database via Prisma, so later rule/AI evaluation reads from the DB instead of re-hitting IMAP. Schema and migration verified against a real local Postgres instance.
+2. **Local mirror sync** (`npm run sync`) — incrementally syncs INBOX message metadata (envelope, flags, Gmail thread ID/labels) into a local Postgres database via Prisma, so later rule/AI evaluation reads from the DB instead of re-hitting IMAP.
+3. **Real-time watcher** (`npm run watch`) — does a catch-up sync, then holds an IMAP IDLE connection open and re-syncs whenever new mail arrives. Verified against a real Gmail account: appending a message while the watcher was idling triggered a sync within seconds.
 
-Not yet built: IMAP IDLE (push-style sync), SMTP send, the rules/AI engine, and any UI. See [DESIGN.md](DESIGN.md) for the full plan and open decisions (tech stack, UI shape, MVP scope) still to be settled.
+All three verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
+
+Not yet built: SMTP send, the rules/AI engine, and any UI. See [DESIGN.md](DESIGN.md) for the full plan and open decisions (tech stack, UI shape, MVP scope) still to be settled.
 
 ## Getting Started
 
@@ -44,7 +47,8 @@ Then, either:
 
 ```bash
 npm run imap-test   # connects and lists the last 10 INBOX messages, no DB involved
-npm run sync         # incrementally syncs INBOX metadata into Postgres
+npm run sync         # one-shot incremental sync of INBOX metadata into Postgres
+npm run watch         # catches up, then stays connected and syncs new mail as it arrives (Ctrl+C to stop)
 ```
 
-`sync` is safe to re-run — it only fetches UIDs newer than the last one it saw per mailbox, and resets its cursor automatically if the server's UIDVALIDITY changes.
+Both `sync` and `watch` are safe to re-run — they only fetch UIDs newer than the last one seen per mailbox, and reset the cursor automatically if the server's UIDVALIDITY changes.

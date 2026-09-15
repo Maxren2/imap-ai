@@ -6,6 +6,7 @@
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
     "sync": "tsx src/sync.ts",
+    "watch": "tsx src/watch.ts",
     "db:up": "docker compose up -d postgres",
     "db:migrate": "prisma migrate dev",
     "typecheck": "tsc --noEmit"

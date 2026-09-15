@@ -31,7 +31,7 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 
 ### 4.1 Ingestion (IMAP)
 
-- One persistent **IMAP IDLE** connection per connected mailbox for near-real-time new-mail notification (the IMAP equivalent of Gmail's Pub/Sub push watch — and notably, doesn't expire/need renewal the way a Gmail watch subscription does).
+- One persistent **IMAP IDLE** connection per connected mailbox for near-real-time new-mail notification (the IMAP equivalent of Gmail's Pub/Sub push watch — and notably, doesn't expire/need renewal the way a Gmail watch subscription does). Verified against a real Gmail account: a message appended while idling triggered a sync within roughly 15-20 seconds -- not instant, but well within what a background assistant needs, and far better than the polling this replaces. Implementation note: the IDLE client library's "wait for activity" promise only resolves on its own periodic renewal timer, not on each individual server push -- the actual per-message trigger is an event the library emits as pushes arrive, handled separately from that promise.
 - A local **mirror** of message metadata (and, lazily, bodies) in Postgres, so rule/AI evaluation reads from the local mirror instead of re-fetching from the server on every run. This is what actually kills the "hidden extra API cost per AI match" problem — sender-pattern analysis becomes a local DB query, not 50 more IMAP fetches.
 - **Gmail-specific IMAP extensions** (`X-GM-LABELS`, `X-GM-THRID`, `X-GM-MSGID`) are used when talking to Gmail, to preserve label and thread semantics equivalent to what the REST API exposes today. These are Gmail-only; a generic IMAP provider falls back to plain folder/UID semantics.
 - Connection budget: cap concurrent IMAP connections per account well under the ~15 limit, shared between the IDLE connection and any active sync/backfill connections.
@@ -54,7 +54,7 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 
 ## 5. Open decisions (need your input before going further)
 
-1. **Tech stack**: settled for now — Node.js/TypeScript, `imapflow` for IMAP, Postgres + Prisma for the local mirror (all verified working: IMAP auth, schema, and a real migration applied against local Postgres). `nodemailer` for SMTP still to be wired up. Revisit if this stops fitting.
+1. **Tech stack**: settled for now — Node.js/TypeScript, `imapflow` for IMAP (auth, incremental sync, and IDLE push notifications all verified against a real Gmail account), Postgres + Prisma for the local mirror (schema and migration verified against real local Postgres). `nodemailer` for SMTP still to be wired up. Revisit if this stops fitting.
 2. **UI/app shape**: full web app (Next.js, like inbox-zero) vs. a lighter service that could plug into inbox-zero later vs. CLI-first.
 3. **Code reuse**: confirmed as a fresh scaffold (no inbox-zero code carried over) — but the *rules engine* and *AI prompt/matching logic* are still worth referencing conceptually rather than reinventing from zero. Worth deciding per-component rather than all-or-nothing.
 4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet — confirm this is the right first slice.
