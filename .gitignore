@@ -7,3 +7,4 @@ dist/
 next-env.d.ts
 *.tsbuildinfo
 packages/core/src/generated/
+.claude/settings.local.json

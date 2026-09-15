@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
+import { findSpecialUseMailbox } from "./special-use.js";
 
 export interface SmtpOAuthEnv {
   user: string;
@@ -50,16 +51,6 @@ function buildRawMessage(from: string, options: SendOptions): { raw: string; mes
 }
 
 /**
- * Finds the account's Sent mailbox via the SPECIAL-USE extension rather
- * than guessing a path (Gmail's is "[Gmail]/Sent Mail" in English, but
- * that's locale-dependent and not something to hardcode).
- */
-async function findSentMailbox(client: ImapFlow): Promise<string | undefined> {
-  const mailboxes = await client.list();
-  return mailboxes.find((mailbox) => mailbox.specialUse === "\\Sent")?.path;
-}
-
-/**
  * Sends a message over SMTP and appends the exact same raw MIME source to
  * the account's Sent folder over IMAP -- plain SMTP doesn't save a sent
  * copy the way the Gmail REST API does, so the client has to do it itself.
@@ -76,7 +67,7 @@ export async function sendAndSaveToSent(
   // headers to build the SMTP envelope -- it must be given explicitly.
   await transport.sendMail({ raw, envelope: { from, to: options.to } });
 
-  const sentPath = await findSentMailbox(imapClient);
+  const sentPath = await findSpecialUseMailbox(imapClient, "\\Sent");
   if (sentPath) {
     const lock = await imapClient.getMailboxLock(sentPath);
     try {

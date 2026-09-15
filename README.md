@@ -17,11 +17,12 @@ Early stage, building up from the riskiest parts of the design first:
 3. **Real-time watcher** (`npm run watch`) — does a catch-up sync, then holds an IMAP IDLE connection open and re-syncs whenever new mail arrives. Verified against a real Gmail account: appending a message while the watcher was idling triggered a sync within seconds.
 4. **SMTP send** (`npm run smtp-test`) — sends via SMTP (XOAUTH2) and appends the same raw message to the account's Sent folder over IMAP, since plain SMTP doesn't save a sent copy. The Sent folder is located via the SPECIAL-USE extension rather than a guessed path -- confirmed necessary in testing, since this account's Sent folder is actually `[Gmail]/Gesendet` (German locale), not the commonly-assumed `[Gmail]/Sent Mail`.
 5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. Lists the account (with a note when older mail hasn't been backfilled yet), rules with live match counts and type (deterministic/AI), and recent synced messages.
-6. **Rules engine** (`npm run rules:run`) — evaluates enabled rules against the local mirror and records matches, idempotently. Two kinds of conditions, usable alone or combined: deterministic (AND-combined checks on sender/subject/labels) and AI (a natural-language prompt evaluated by a local Ollama model). AI rules now get real body content, fetched lazily and on demand (only for candidates actually being AI-evaluated, not the whole mailbox) rather than needing a separate eager body-sync step. No action execution (label/archive/reply) yet — this is match-detection only. `npm run rules:seed-example` creates three example rules (two deterministic, one AI) to try it against real synced mail.
+6. **Rules engine** (`npm run rules:run`) — evaluates enabled rules against the local mirror and records matches, idempotently. Two kinds of conditions, usable alone or combined: deterministic (AND-combined checks on sender/subject/labels) and AI (a natural-language prompt evaluated by a local Ollama model, with real body content fetched lazily and on demand). `npm run rules:seed-example` creates three example rules (two deterministic, one AI) to try it against real synced mail.
+7. **Action execution** (`npm run rules:apply-actions`) — applies a rule's actions (label, archive, mark read, star) to its matches, separately from detection so each step is independently safe to retry. Labels are resolved against your existing Gmail labels first (case/punctuation-insensitive), only creating a new one if nothing matches, and reserved Gmail system labels can't be targeted. `npm run rules:seed-basic` adds a few common cleanup rules (Newsletter, Marketing, Receipt, Notification), inspired by inbox-zero's default categories, seeded **disabled** so nothing auto-archives until you've reviewed what it'd catch.
 
-All six verified end-to-end against a real Gmail account, a real local Postgres instance, and (for AI matching) a real local Ollama server — not just typechecked.
+All seven verified end-to-end against a real Gmail account, a real local Postgres instance, and (for AI matching) a real local Ollama server — not just typechecked. Action execution specifically caught a real, undocumented Gmail quirk: removing the `\Inbox` label via the standard IMAP extension silently does nothing (server says OK, message stays put) — archiving now uses an IMAP `MOVE` to the All Mail folder instead, which actually works.
 
-Not yet built: executing actions (label/archive/draft-reply) for a match, and a UI control for triggering a full backfill (the backend supports it via `npm run backfill`; a GUI toggle is intentionally deferred). See [DESIGN.md](DESIGN.md) for the full plan.
+Not yet built: reply/forward/draft-email/delete actions, and a UI for managing rules/actions or triggering a full backfill (the backend supports backfill via `npm run backfill`; a GUI toggle is intentionally deferred). See [DESIGN.md](DESIGN.md) for the full plan.
 
 ## Structure
 
@@ -65,7 +66,9 @@ npm run backfill       # fetches older mail left behind by a date-bounded first 
 npm run smtp-test     # sends a self-addressed test email and appends it to the Sent folder
 npm run dev            # starts the Next.js app at http://localhost:3000
 npm run rules:seed-example  # creates three example rules (two deterministic, one AI) against the synced account
+npm run rules:seed-basic    # adds a few common cleanup rules, disabled by default
 npm run rules:run           # evaluates enabled rules against the local mirror
+npm run rules:apply-actions # applies each rule's actions to its unactioned matches
 ```
 
 Both `sync` and `watch` are safe to re-run — they only fetch UIDs newer than the last one seen per mailbox, and reset the cursor automatically if the server's UIDVALIDITY changes.

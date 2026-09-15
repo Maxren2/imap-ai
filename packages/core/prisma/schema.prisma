@@ -76,6 +76,10 @@ model Rule {
   // `conditions` (if any) -- conditions act as a cheap pre-filter before
   // the more expensive AI call.
   aiPrompt   String?
+  // RuleAction[] (see packages/core/src/rules/actions.ts) -- applied in
+  // order to every match. Optional: a rule can exist purely for
+  // detection/visibility with no actions yet.
+  actions    Json?
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   matches    RuleMatch[]
@@ -84,12 +88,18 @@ model Rule {
 }
 
 model RuleMatch {
-  id        String   @id @default(cuid())
-  ruleId    String
-  rule      Rule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  messageId String
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  matchedAt DateTime @default(now())
+  id              String    @id @default(cuid())
+  ruleId          String
+  rule            Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  messageId       String
+  message         Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  matchedAt       DateTime  @default(now())
+  // Set once the rule's actions have been applied to this match over IMAP
+  // -- null means "detected but not yet acted on" (or the rule has no
+  // actions), letting detection and action execution run/fail
+  // independently and idempotently.
+  actionsAppliedAt DateTime?
+  actionsError     String?
 
   @@unique([ruleId, messageId])
   @@index([messageId])
