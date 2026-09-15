@@ -84,7 +84,11 @@ export default async function RulesPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="font-normal">
-                      {rule.aiPrompt ? (rule.conditions ? "conditions + AI" : "AI") : "conditions"}
+                      {rule.aiPrompt
+                        ? rule.conditions
+                          ? `conditions ${rule.conditionalOperator} AI`
+                          : "AI"
+                        : "conditions"}
                       {rule.actions ? " + actions" : ""}
                     </Badge>
                   </TableCell>

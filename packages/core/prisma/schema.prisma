@@ -191,15 +191,27 @@ model Rule {
   // each other, only a second attempt at the same system type would.
   systemType String?
   // RuleCondition[] (see packages/core/src/rules/types.ts) -- ALL conditions
-  // must match (AND) for v1. Stored as JSON rather than normalized rows
-  // since there's no UI yet to justify the extra join complexity. At least
-  // one of conditions/aiPrompt must be set (enforced in application code).
+  // within this array always AND together (matching inbox-zero's own real
+  // model, confirmed from its source: its static from/to/subject/body
+  // bundle has no OR between fields either -- only between the whole
+  // static bundle and the AI prompt, see conditionalOperator below).
+  // Stored as JSON rather than normalized rows since there's no UI need
+  // for the extra join complexity. At least one of conditions/aiPrompt
+  // must be set (enforced in application code).
   conditions Json?
   // Natural-language condition evaluated via a local LLM (see
-  // packages/core/src/ai/ollama.ts), against messages that already pass
-  // `conditions` (if any) -- conditions act as a cheap pre-filter before
-  // the more expensive AI call.
+  // packages/core/src/ai/ollama.ts).
   aiPrompt   String?
+  // How `conditions` and `aiPrompt` combine when both are set (ignored
+  // when only one is set) -- "AND" (default): conditions act as a cheap
+  // pre-filter, aiPrompt only runs on what already passed (the original,
+  // only behavior before this field existed). "OR": a message matching
+  // `conditions` matches immediately without an AI call (same short-
+  // circuit inbox-zero's real OR mode uses); a message that doesn't is
+  // still checked against aiPrompt, since OR means either side alone is
+  // enough. Plain string, not a Prisma enum, for the same reason
+  // SenderStatus.status/Rule.systemType are.
+  conditionalOperator String @default("AND")
   // RuleAction[] (see packages/core/src/rules/actions.ts) -- applied in
   // order to every match. Optional: a rule can exist purely for
   // detection/visibility with no actions yet.

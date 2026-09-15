@@ -94,6 +94,7 @@ async function main() {
           subject: true,
           fromAddress: true,
           fromName: true,
+          toAddress: true,
           labels: true,
           bodyText: true,
           bodyFetchedAt: true,
@@ -104,13 +105,32 @@ async function main() {
         ? candidates.filter((message) => evaluateConditions(conditions!, message))
         : candidates;
 
+      // "AND" (default): conditions are a cheap pre-filter, aiPrompt only
+      // runs on what already passed -- unchanged from before this field
+      // existed. "OR": a message that already passed conditions matches
+      // immediately (same short-circuit inbox-zero's real OR mode uses),
+      // so only the *non*-passing messages need an AI call -- guarded on
+      // `conditions` being set at all, so an AI-only rule (no conditions)
+      // still sends its whole candidate pool to AI regardless of this
+      // field's stored value.
+      const conditionalOperator = rule.conditionalOperator === "OR" ? "OR" : "AND";
+      const deterministicPassIds = new Set(deterministicPass.map((m) => m.id));
+      const aiPool =
+        conditionalOperator === "OR" && conditions
+          ? candidates.filter((m) => !deterministicPassIds.has(m.id))
+          : deterministicPass;
+
       let finalMatches: Candidate[];
       if (!rule.aiPrompt) {
         finalMatches = deterministicPass;
       } else if (!ollamaConfig || !imapClient) {
-        finalMatches = [];
+        // AI unreachable: in OR mode the deterministic side alone is
+        // still a valid partial answer (either side matching is enough);
+        // in AND mode a match needs both, so there's nothing to report
+        // yet -- same as before this field existed.
+        finalMatches = conditionalOperator === "OR" ? deterministicPass : [];
       } else {
-        const aiCandidates = deterministicPass.slice(0, AI_MAX_PER_RUN);
+        const aiCandidates = aiPool.slice(0, AI_MAX_PER_RUN);
 
         // Body fetches go through one shared IMAP connection, so they're
         // done sequentially here rather than inside the concurrent AI step
@@ -148,7 +168,11 @@ async function main() {
             return { message, matches: false };
           }
         });
-        finalMatches = aiResults.filter((r) => r.matches).map((r) => r.message);
+        const aiMatches = aiResults.filter((r) => r.matches).map((r) => r.message);
+        // In OR mode, aiPool already excludes deterministic-passing
+        // messages, so this is a plain concatenation, not a risk of
+        // double-counting the same message from both sides.
+        finalMatches = conditionalOperator === "OR" ? [...deterministicPass, ...aiMatches] : aiMatches;
 
         // Record every candidate actually sent to the AI (matched or not)
         // as evaluated, so a "no" doesn't get re-asked forever -- only
@@ -173,7 +197,7 @@ async function main() {
 
       const aiSuffix =
         rule.aiPrompt && ollamaConfig
-          ? ` (${Math.min(deterministicPass.length, AI_MAX_PER_RUN)} of ${deterministicPass.length} eligible sent to AI, with body)`
+          ? ` (${Math.min(aiPool.length, AI_MAX_PER_RUN)} of ${aiPool.length} eligible sent to AI, with body)`
           : "";
       console.log(`Rule "${rule.name}": ${finalMatches.length} new match(es) out of ${candidates.length} candidate(s)${aiSuffix}.`);
     }

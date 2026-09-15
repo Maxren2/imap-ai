@@ -2,7 +2,7 @@
 
 import { prisma } from "@imap-ai/core/db";
 import { Prisma } from "@imap-ai/core/prisma";
-import { ruleConditionsSchema, type RuleConditions } from "@imap-ai/core/rules/types";
+import { ruleConditionsSchema, conditionalOperatorSchema, type RuleConditions } from "@imap-ai/core/rules/types";
 import { ruleActionsSchema, type RuleActions } from "@imap-ai/core/rules/actions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -46,6 +46,7 @@ export async function saveRule(ruleId: string | null, formData: FormData): Promi
   const aiPrompt = (formData.get("aiPrompt") as string | null)?.trim() || null;
   const conditions = parseConditionsFromForm(formData);
   const actions = parseActionsFromForm(formData);
+  const conditionalOperator = conditionalOperatorSchema.catch("AND").parse(formData.get("conditionalOperator"));
 
   if (!conditions && !aiPrompt) {
     throw new Error("A rule needs at least one condition or an AI prompt.");
@@ -57,12 +58,20 @@ export async function saveRule(ruleId: string | null, formData: FormData): Promi
   if (ruleId) {
     await prisma.rule.update({
       where: { id: ruleId },
-      data: { name, enabled, aiPrompt, conditions: conditionsValue, actions: actionsValue },
+      data: { name, enabled, aiPrompt, conditions: conditionsValue, actions: actionsValue, conditionalOperator },
     });
   } else {
     const account = await prisma.account.findFirstOrThrow();
     await prisma.rule.create({
-      data: { accountId: account.id, name, enabled, aiPrompt, conditions: conditionsValue, actions: actionsValue },
+      data: {
+        accountId: account.id,
+        name,
+        enabled,
+        aiPrompt,
+        conditions: conditionsValue,
+        actions: actionsValue,
+        conditionalOperator,
+      },
     });
   }
 

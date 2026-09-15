@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { prisma } from "@imap-ai/core/db";
-import { ruleConditionsSchema, type RuleConditions } from "@imap-ai/core/rules/types";
+import { ruleConditionsSchema, conditionalOperatorSchema, type RuleConditions } from "@imap-ai/core/rules/types";
 import { ruleActionsSchema, type RuleActions } from "@imap-ai/core/rules/actions";
 
 // packages/core's rule schemas are zod v3 instances; apps/web is on zod v4
@@ -13,7 +13,7 @@ import { ruleActionsSchema, type RuleActions } from "@imap-ai/core/rules/actions
 // still goes through core's real zod v3 schemas inside execute() via
 // .parse() before anything is written to the database.
 const conditionShape = z.object({
-  field: z.enum(["fromAddress", "fromName", "subject", "labels"]),
+  field: z.enum(["fromAddress", "fromName", "toAddress", "subject", "labels"]),
   operator: z.enum(["contains", "equals", "startsWith"]),
   value: z.string().min(1),
 });
@@ -56,15 +56,16 @@ export function createChatTools(accountId: string) {
 
     createRule: tool({
       description:
-        "Create a new email rule. Provide a name and at least one of: conditions (deterministic field/operator/value checks on fromAddress/fromName/subject/labels) or aiPrompt (a natural-language description evaluated by AI). Optionally specify actions (label/archive/markRead/star) to apply automatically to matches. New rules don't run automatically -- tell the user to trigger detection from the Rules page.",
+        "Create a new email rule. Provide a name and at least one of: conditions (deterministic field/operator/value checks on fromAddress/fromName/toAddress/subject/labels) or aiPrompt (a natural-language description evaluated by AI). If both are given, conditionalOperator controls how they combine: 'AND' (default) means conditions act as a cheap pre-filter and the AI prompt only runs on what already passed; 'OR' means either alone is enough to match. Optionally specify actions (label/archive/markRead/star) to apply automatically to matches. New rules don't run automatically -- tell the user to trigger detection from the Rules page.",
       inputSchema: z.object({
         name: z.string().min(1),
         conditions: z.array(conditionShape).optional(),
         aiPrompt: z.string().min(1).optional(),
+        conditionalOperator: z.enum(["AND", "OR"]).optional(),
         actions: z.array(actionShape).optional(),
         enabled: z.boolean().optional(),
       }),
-      execute: async ({ name, conditions, aiPrompt, actions, enabled }) => {
+      execute: async ({ name, conditions, aiPrompt, conditionalOperator, actions, enabled }) => {
         if (!conditions && !aiPrompt) {
           return { error: "A rule needs at least one condition or an AI prompt -- ask the user which they'd prefer." };
         }
@@ -75,9 +76,18 @@ export function createChatTools(accountId: string) {
           ? ruleConditionsSchema.parse(conditions)
           : undefined;
         const validatedActions: RuleActions | undefined = actions ? ruleActionsSchema.parse(actions) : undefined;
+        const validatedConditionalOperator = conditionalOperatorSchema.catch("AND").parse(conditionalOperator);
 
         const rule = await prisma.rule.create({
-          data: { accountId, name, enabled: enabled ?? true, conditions: validatedConditions, aiPrompt, actions: validatedActions },
+          data: {
+            accountId,
+            name,
+            enabled: enabled ?? true,
+            conditions: validatedConditions,
+            aiPrompt,
+            actions: validatedActions,
+            conditionalOperator: validatedConditionalOperator,
+          },
         });
         return {
           id: rule.id,

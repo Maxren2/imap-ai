@@ -4,6 +4,7 @@ export interface MatchableMessage {
   subject: string | null;
   fromAddress: string | null;
   fromName: string | null;
+  toAddress: string | null;
   labels: string[];
 }
 

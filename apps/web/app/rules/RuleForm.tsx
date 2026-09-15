@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 
 const CONDITION_ROWS = 4;
-const CONDITION_FIELDS = ["fromAddress", "fromName", "subject", "labels"] as const;
+const CONDITION_FIELDS = ["fromAddress", "fromName", "toAddress", "subject", "labels"] as const;
 const CONDITION_OPERATORS = ["contains", "equals", "startsWith"] as const;
 
 type RuleRow = Prisma.RuleGetPayload<{}>;
@@ -85,6 +85,26 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
+        <label htmlFor="conditionalOperator" className="text-sm font-medium">
+          Combine conditions and AI prompt with
+        </label>
+        <select
+          id="conditionalOperator"
+          name="conditionalOperator"
+          defaultValue={rule?.conditionalOperator ?? "AND"}
+          className={selectClass}
+        >
+          <option value="AND">AND — a message needs both to match</option>
+          <option value="OR">OR — either alone is enough to match</option>
+        </select>
+        <span className="text-xs text-muted-foreground">
+          Only matters when both are set. With AND, conditions act as a cheap pre-filter and the AI prompt only runs
+          on what already passed. With OR, a message matching the conditions matches immediately (no AI call needed);
+          a message that doesn&apos;t is still checked against the AI prompt.
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         <label htmlFor="aiPrompt" className="text-sm font-medium">
           AI prompt (optional)
         </label>
@@ -96,8 +116,7 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
           className="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <span className="text-xs text-muted-foreground">
-          Evaluated by your local Ollama model against messages that already pass the conditions above (if any).
-          Needs OLLAMA_BASE_URL/OLLAMA_MODEL configured.
+          Evaluated by your local Ollama model. Needs OLLAMA_BASE_URL/OLLAMA_MODEL configured.
         </span>
       </div>
 
