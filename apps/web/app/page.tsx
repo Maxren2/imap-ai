@@ -11,7 +11,17 @@ export default async function HomePage() {
       where: { inInbox: true },
       orderBy: { date: "desc" },
       take: 50,
-      select: { id: true, subject: true, fromAddress: true, fromName: true, date: true, labels: true, flags: true },
+      select: {
+        id: true,
+        subject: true,
+        fromAddress: true,
+        fromName: true,
+        date: true,
+        labels: true,
+        flags: true,
+        bodyText: true,
+        bodyFetchedAt: true,
+      },
     }),
     prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
   ]);
@@ -24,6 +34,12 @@ export default async function HomePage() {
     dateIso: message.date.toISOString(),
     labels: message.labels,
     flags: message.flags,
+    // Only messages already lazily body-fetched by something else (e.g. an
+    // AI rule prompt) have a snippet for free here -- the rest are
+    // fetched client-side after mount (see ThreadList), so first paint
+    // isn't blocked on up to 50 IMAP downloads.
+    snippet: message.bodyText ? message.bodyText.replace(/\s+/g, " ").trim().slice(0, 160) : null,
+    bodyFetched: message.bodyFetchedAt !== null,
   }));
 
   return (

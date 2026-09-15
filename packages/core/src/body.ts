@@ -1,6 +1,6 @@
 import type { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { prisma } from "./db.js";
+import { prisma } from "./db";
 
 const MAX_STORED_BODY_CHARS = 20_000;
 

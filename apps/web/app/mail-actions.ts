@@ -3,6 +3,7 @@
 import { prisma } from "@imap-ai/core/db";
 import { connectImap, requireEnv } from "@imap-ai/core/imap-connect";
 import { applyRuleActions } from "@imap-ai/core/rules/actions";
+import { ensureMessageBody } from "@imap-ai/core/body";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -51,4 +52,45 @@ export async function archiveMessages(messageIds: string[]): Promise<{ archived:
 
   revalidatePath("/");
   return { archived };
+}
+
+/**
+ * Fetches (and caches) bodies for messages that don't have one yet, and
+ * returns a short snippet per id. Called client-side after the Inbox list
+ * mounts, not from the page's own server-rendered request -- doing up to
+ * 50 sequential IMAP downloads inline would make first paint slow,
+ * especially on a mailbox where nothing's been body-fetched yet. Reuses
+ * the same lazy body-fetch core (`ensureMessageBody`) the AI rule-prompt
+ * path already uses, so once a body's cached here, an AI rule evaluating
+ * that same message later won't re-fetch it either.
+ */
+export async function fetchMissingSnippets(messageIds: string[]): Promise<Record<string, string | null>> {
+  if (messageIds.length === 0) return {};
+
+  const messages = await prisma.message.findMany({
+    where: { id: { in: messageIds }, bodyFetchedAt: null },
+    select: { id: true, uid: true, bodyText: true, bodyFetchedAt: true },
+  });
+  if (messages.length === 0) return {};
+
+  const gmailAddress = requireEnv("GMAIL_ADDRESS");
+  const client = await connectImap(gmailAddress);
+  const lock = await client.getMailboxLock("INBOX");
+
+  const snippets: Record<string, string | null> = {};
+  try {
+    for (const message of messages) {
+      try {
+        const text = await ensureMessageBody(client, message);
+        snippets[message.id] = text ? text.replace(/\s+/g, " ").trim().slice(0, 160) : null;
+      } catch (error) {
+        console.error(`Failed to fetch body for message ${message.id}:`, error);
+      }
+    }
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+
+  return snippets;
 }

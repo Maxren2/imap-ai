@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Archive, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { archiveMessages } from "@/app/mail-actions";
+import { archiveMessages, fetchMissingSnippets } from "@/app/mail-actions";
 
 export interface ThreadListMessage {
   id: string;
@@ -17,6 +17,8 @@ export interface ThreadListMessage {
   dateIso: string;
   labels: string[];
   flags: string[];
+  snippet: string | null;
+  bodyFetched: boolean;
 }
 
 function initials(name: string | null, address: string | null): string {
@@ -48,6 +50,23 @@ export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
 
   const allSelected = localMessages.length > 0 && selected.size === localMessages.length;
   const someSelected = selected.size > 0;
+
+  useEffect(() => {
+    const missingIds = messages.filter((m) => !m.bodyFetched).map((m) => m.id);
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    fetchMissingSnippets(missingIds).then((snippets) => {
+      if (cancelled) return;
+      setLocalMessages((prev) =>
+        prev.map((m) => (m.id in snippets ? { ...m, snippet: snippets[m.id], bodyFetched: true } : m)),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(localMessages.map((m) => m.id)));
@@ -114,6 +133,7 @@ export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
               <span className="w-36 shrink-0 truncate text-sm">{displayName}</span>
               <span className={cn("min-w-0 flex-1 truncate text-sm", !isUnread && "text-muted-foreground")}>
                 {message.subject || "(no subject)"}
+                {message.snippet && <span className="font-normal text-muted-foreground"> — {message.snippet}</span>}
               </span>
               <div className="hidden shrink-0 gap-1 sm:flex">
                 {visibleLabels.slice(0, 2).map((label) => (

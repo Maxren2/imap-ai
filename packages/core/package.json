@@ -14,7 +14,8 @@
     "./rules/evaluate": "./src/rules/evaluate.ts",
     "./rules/actions": "./src/rules/actions.ts",
     "./imap-connect": "./src/imap-connect.ts",
-    "./unsubscribe": "./src/unsubscribe.ts"
+    "./unsubscribe": "./src/unsubscribe.ts",
+    "./body": "./src/body.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
