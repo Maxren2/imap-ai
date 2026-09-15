@@ -12,7 +12,8 @@
     "./prisma": "./src/generated/prisma/index.js",
     "./rules/types": "./src/rules/types.ts",
     "./rules/evaluate": "./src/rules/evaluate.ts",
-    "./rules/actions": "./src/rules/actions.ts"
+    "./rules/actions": "./src/rules/actions.ts",
+    "./imap-connect": "./src/imap-connect.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",

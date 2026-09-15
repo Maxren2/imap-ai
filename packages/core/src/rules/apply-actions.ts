@@ -50,6 +50,8 @@ async function main() {
         continue;
       }
 
+      const archives = actions.some((action) => action.type === "archive");
+
       let applied = 0;
       let failed = 0;
       for (const match of pending) {
@@ -59,6 +61,12 @@ async function main() {
             where: { id: match.id },
             data: { actionsAppliedAt: new Date(), actionsError: null },
           });
+          // Gmail omits "\Inbox" from X-GM-LABELS when fetched from within
+          // INBOX itself, so `labels` can't tell us this -- track it
+          // explicitly instead (see DESIGN.md section 11).
+          if (archives) {
+            await prisma.message.update({ where: { id: match.message.id }, data: { inInbox: false } });
+          }
           applied++;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

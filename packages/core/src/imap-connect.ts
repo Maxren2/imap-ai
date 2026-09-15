@@ -1,5 +1,5 @@
 import { ImapFlow, type ImapFlowOptions } from "imapflow";
-import { getGmailAccessToken } from "./gmail-oauth.js";
+import { getGmailAccessToken } from "./gmail-oauth";
 
 export function requireEnv(name: string): string {
   const value = process.env[name];

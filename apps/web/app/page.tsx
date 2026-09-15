@@ -1,25 +1,30 @@
 import { prisma } from "@imap-ai/core/db";
-import type { Prisma } from "@imap-ai/core/prisma";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ThreadList, type ThreadListMessage } from "@/components/thread-list";
 
 export const dynamic = "force-dynamic";
 
-type RecentMessage = Prisma.MessageGetPayload<{
-  select: { id: true; subject: true; fromAddress: true; fromName: true; date: true; labels: true };
-}>;
-
 export default async function HomePage() {
-  const [account, messageCount, recentMessages, inbox] = await Promise.all([
+  const [account, inboxCount, messages, inbox] = await Promise.all([
     prisma.account.findFirst(),
-    prisma.message.count(),
+    prisma.message.count({ where: { inInbox: true } }),
     prisma.message.findMany({
+      where: { inInbox: true },
       orderBy: { date: "desc" },
-      take: 20,
-      select: { id: true, subject: true, fromAddress: true, fromName: true, date: true, labels: true },
+      take: 50,
+      select: { id: true, subject: true, fromAddress: true, fromName: true, date: true, labels: true, flags: true },
     }),
     prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
   ]);
+
+  const threadMessages: ThreadListMessage[] = messages.map((message) => ({
+    id: message.id,
+    subject: message.subject,
+    fromAddress: message.fromAddress,
+    fromName: message.fromName,
+    dateIso: message.date.toISOString(),
+    labels: message.labels,
+    flags: message.flags,
+  }));
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
@@ -27,7 +32,7 @@ export default async function HomePage() {
       {account ? (
         <p className="mt-1 text-sm text-muted-foreground">
           <span className="font-medium text-foreground">{account.email}</span> &middot;{" "}
-          {messageCount.toLocaleString()} messages mirrored
+          {inboxCount.toLocaleString()} in inbox
           {inbox && !inbox.fullyBackfilled && (
             <>
               {" "}
@@ -39,44 +44,14 @@ export default async function HomePage() {
         <p className="mt-1 text-sm text-muted-foreground">No account synced yet. Run `npm run sync` from the repo root first.</p>
       )}
 
-      <h2 className="mt-8 mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Recent messages
-      </h2>
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>From</TableHead>
-              <TableHead>Subject</TableHead>
-              <TableHead>Labels</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {recentMessages.map((message: RecentMessage) => (
-              <TableRow key={message.id}>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {message.date.toISOString().slice(0, 16).replace("T", " ")}
-                </TableCell>
-                <TableCell className="max-w-[180px] truncate">{message.fromName || message.fromAddress || "—"}</TableCell>
-                <TableCell className="max-w-[360px] truncate">{message.subject || "(no subject)"}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {message.labels
-                      .filter((label) => !label.startsWith("\\"))
-                      .slice(0, 3)
-                      .map((label) => (
-                        <Badge key={label} variant="secondary" className="font-normal">
-                          {label}
-                        </Badge>
-                      ))}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="mt-6">
+        <ThreadList messages={threadMessages} />
       </div>
+      {inboxCount > threadMessages.length && (
+        <p className="mt-3 text-center text-xs text-muted-foreground">
+          Showing the {threadMessages.length} most recent of {inboxCount.toLocaleString()} in your inbox.
+        </p>
+      )}
     </main>
   );
 }

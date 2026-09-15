@@ -48,6 +48,15 @@ model Message {
   date           DateTime
   flags          String[]
   labels         String[]
+  // Tracked explicitly rather than derived from `labels` -- Gmail's
+  // X-GM-LABELS response omits "\Inbox" when a message is fetched from
+  // within the INBOX mailbox itself (confirmed live: only present when
+  // viewed from a *different* folder), so the label array can't be used
+  // to tell whether a synced-from-INBOX message is still there. Defaults
+  // true on sync (it came from INBOX); set false by our own archive
+  // actions. Doesn't detect an archive done outside this app (e.g.
+  // directly in Gmail) -- only reflects actions this app took.
+  inInbox        Boolean     @default(true)
   // Lazily fetched -- null/unset until something actually needs body
   // content (an AI rule prompt, e.g.). bodyFetchedAt is set even on a
   // fetch that finds no text part, so we don't keep retrying it forever.
