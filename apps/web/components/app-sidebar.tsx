@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { title: "Chat", href: "/chat", icon: MessageCircle },
   { title: "Assistant", href: "/rules", icon: Sparkles },
   { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
-  { title: "Bulk Archive", href: "/bulk-archive", icon: Archive, soon: true },
+  { title: "Bulk Archive", href: "/bulk-archive", icon: Archive },
   { title: "Analytics", href: "/stats", icon: BarChart3, soon: true },
 ];
 
