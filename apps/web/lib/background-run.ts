@@ -24,17 +24,29 @@ import fs from "node:fs";
  * Next.js server. Confirmed via a standalone A/B script changing only that
  * one option. Do not add `detached: true` back without re-verifying.
  */
-export async function runNpmScript(script: string, kind: string, revalidate: string): Promise<void> {
+export async function runNpmScript(
+  script: string,
+  kind: string,
+  revalidate: string,
+  env?: Record<string, string>,
+): Promise<void> {
   const account = await prisma.account.findFirstOrThrow();
   const run = await prisma.backgroundRun.create({ data: { accountId: account.id, kind } });
 
   const repoRoot = path.resolve(process.cwd(), "../..");
   const logPath = path.join(os.tmpdir(), `imap-ai-run-${run.id}.log`);
 
+  // `env` (e.g. Deep Clean's user-chosen options) is passed via the child
+  // process's environment rather than as `npm run <script> -- <args>` CLI
+  // args -- this spawn already goes through two layers of `npm run`
+  // delegation (repo root -> the @imap-ai/core workspace), and forwarding
+  // argv reliably through both hops (each needing its own `--`) is more
+  // fragile than just setting env vars the leaf script reads directly.
   const child = spawn("npm", ["run", script, ">", `"${logPath}"`, "2>&1"], {
     cwd: repoRoot,
     stdio: "ignore",
     shell: true,
+    env: { ...process.env, ...env },
   });
 
   function readLog(): string {

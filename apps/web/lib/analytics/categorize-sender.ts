@@ -1,3 +1,5 @@
+import { RECEIPT_PATTERN } from "@imap-ai/core/text-patterns";
+
 export type SenderCategory = "Newsletter" | "Marketing" | "Receipt" | "Notification" | "Other";
 
 export const SENDER_CATEGORIES: SenderCategory[] = ["Newsletter", "Marketing", "Receipt", "Notification", "Other"];
@@ -10,7 +12,6 @@ export interface CategorizableSender {
 }
 
 const MARKETING_PATTERN = /marketing|promo|deals?|offers?|\bsale\b|discount/i;
-const RECEIPT_PATTERN = /receipt|invoice|billing|\border\b|payment|purchase|confirmation/i;
 const NOTIFICATION_PATTERN = /notif|alert|no-?reply|security|support/i;
 
 /**

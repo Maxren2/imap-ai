@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff, Moon } from "lucide-react";
+import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff, Moon, Brush } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +36,7 @@ const navItems: NavItem[] = [
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive },
   { title: "No-Reply", href: "/no-reply", icon: Hourglass },
   { title: "Cold Email Blocker", href: "/cold-email-blocker", icon: ShieldOff },
+  { title: "Deep Clean", href: "/deep-clean", icon: Brush },
   { title: "Analytics", href: "/stats", icon: BarChart3 },
 ];
 
