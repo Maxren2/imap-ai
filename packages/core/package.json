@@ -13,7 +13,8 @@
     "./rules/types": "./src/rules/types.ts",
     "./rules/evaluate": "./src/rules/evaluate.ts",
     "./rules/actions": "./src/rules/actions.ts",
-    "./imap-connect": "./src/imap-connect.ts"
+    "./imap-connect": "./src/imap-connect.ts",
+    "./unsubscribe": "./src/unsubscribe.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
@@ -21,6 +22,7 @@
     "watch": "tsx src/watch.ts",
     "smtp-test": "tsx src/smtp-test.ts",
     "backfill": "tsx src/backfill.ts",
+    "backfill-unsubscribe-headers": "tsx src/backfill-unsubscribe-headers.ts",
     "rules:run": "tsx src/rules/run.ts",
     "rules:apply-actions": "tsx src/rules/apply-actions.ts",
     "rules:seed-example": "tsx src/rules/seed-example-rule.ts",

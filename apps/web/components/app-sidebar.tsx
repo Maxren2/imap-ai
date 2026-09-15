@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { title: "Inbox", href: "/", icon: Inbox },
   { title: "Chat", href: "/chat", icon: MessageCircle, soon: true },
   { title: "Assistant", href: "/rules", icon: Sparkles },
-  { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX, soon: true },
+  { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive, soon: true },
   { title: "Analytics", href: "/stats", icon: BarChart3, soon: true },
 ];

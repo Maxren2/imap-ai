@@ -1,7 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type { ImapFlow } from "imapflow";
 import { randomUUID } from "node:crypto";
-import { findSpecialUseMailbox } from "./special-use.js";
+import { findSpecialUseMailbox } from "./special-use";
 
 export interface SmtpOAuthEnv {
   user: string;

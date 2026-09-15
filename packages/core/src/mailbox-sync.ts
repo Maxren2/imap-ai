@@ -1,6 +1,12 @@
 import type { ImapFlow, FetchMessageObject } from "imapflow";
 import { prisma } from "./db.js";
 import { sleep } from "./sleep.js";
+import { parseUnsubscribeHeaders } from "./unsubscribe.js";
+
+// Header-only fetches are cheap (small responses, no body/MIME parsing),
+// unlike bodies -- so unlike bodyText, these are fetched eagerly as part
+// of the regular sync rather than lazily on demand.
+const UNSUBSCRIBE_HEADERS = ["list-unsubscribe", "list-unsubscribe-post"];
 
 export async function ensureAccount(email: string, provider = "gmail") {
   return prisma.account.upsert({
@@ -31,10 +37,18 @@ async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
   const from = message.envelope?.from?.[0];
   const flags = message.flags ? Array.from(message.flags) : [];
   const labels = message.labels ? Array.from(message.labels) : [];
+  const unsubscribe = await parseUnsubscribeHeaders(message.headers ?? Buffer.alloc(0));
 
   await prisma.message.upsert({
     where: { mailboxId_uid: { mailboxId, uid: message.uid } },
-    update: { flags, labels },
+    update: {
+      flags,
+      labels,
+      listUnsubscribeUrl: unsubscribe.url,
+      listUnsubscribeMailto: unsubscribe.mailto,
+      listUnsubscribeOneClick: unsubscribe.oneClick,
+      unsubscribeHeadersFetchedAt: new Date(),
+    },
     create: {
       mailboxId,
       uid: message.uid,
@@ -46,6 +60,10 @@ async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
       date: message.envelope?.date ?? new Date(),
       flags,
       labels,
+      listUnsubscribeUrl: unsubscribe.url,
+      listUnsubscribeMailto: unsubscribe.mailto,
+      listUnsubscribeOneClick: unsubscribe.oneClick,
+      unsubscribeHeadersFetchedAt: new Date(),
     },
   });
 }
@@ -117,7 +135,7 @@ export async function syncOpenedMailbox(
 
   for await (const message of client.fetch(
     searchQuery,
-    { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, labels: true },
+    { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, labels: true, headers: UNSUBSCRIBE_HEADERS },
   )) {
     if (message.uid <= previousLastSeenUid) continue;
     await upsertMessage(mailboxRow.id, message);
@@ -184,7 +202,7 @@ export async function backfillOlderMessages(
 
     for await (const message of client.fetch(
       { uid: `${rangeStart}:${rangeEnd}` },
-      { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, labels: true },
+      { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, labels: true, headers: UNSUBSCRIBE_HEADERS },
     )) {
       await upsertMessage(mailboxRow.id, message);
       totalFetched++;

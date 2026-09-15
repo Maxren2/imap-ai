@@ -15,6 +15,7 @@ model Account {
   createdAt DateTime  @default(now())
   mailboxes Mailbox[]
   rules     Rule[]
+  senderStatuses SenderStatus[]
 }
 
 model Mailbox {
@@ -62,11 +63,41 @@ model Message {
   // fetch that finds no text part, so we don't keep retrying it forever.
   bodyText       String?
   bodyFetchedAt  DateTime?
+  // Parsed from the List-Unsubscribe/List-Unsubscribe-Post headers (fetched
+  // as part of the regular sync -- header-only fetches are cheap, unlike
+  // bodies). listUnsubscribeOneClick means the sender supports RFC 8058
+  // (a POST to listUnsubscribeUrl unsubscribes with no further user
+  // interaction); otherwise the http(s) link/mailto address need a manual
+  // click or a sent email. unsubscribeHeadersFetchedAt is set even when no
+  // header is present, so backfill-unsubscribe-headers doesn't retry
+  // messages that genuinely have none forever.
+  listUnsubscribeUrl         String?
+  listUnsubscribeMailto      String?
+  listUnsubscribeOneClick    Boolean     @default(false)
+  unsubscribeHeadersFetchedAt DateTime?
   createdAt      DateTime    @default(now())
   ruleMatches    RuleMatch[]
 
   @@unique([mailboxId, uid])
   @@index([gmailThreadId])
+  @@index([fromAddress])
+}
+
+// Tracks bulk-unsubscribe status per sender address -- not derived from
+// Message since "unsubscribed" is a decision this app recorded, not
+// something observable from synced mail alone.
+model SenderStatus {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  senderAddress String
+  // "unhandled" | "unsubscribed" -- kept as a plain string (validated in
+  // code) rather than a Prisma enum, so adding a status later doesn't need
+  // a migration.
+  status        String   @default("unhandled")
+  updatedAt     DateTime @updatedAt
+
+  @@unique([accountId, senderAddress])
 }
 
 model Rule {
