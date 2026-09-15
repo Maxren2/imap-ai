@@ -54,7 +54,7 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 
 ## 5. Open decisions (need your input before going further)
 
-1. **Tech stack**: Node.js/TypeScript (matches your familiarity from the inbox-zero fork; libraries: `imapflow` for IMAP, `nodemailer` for SMTP) vs. something else.
+1. **Tech stack**: settled for now — Node.js/TypeScript, `imapflow` for IMAP, Postgres + Prisma for the local mirror (all verified working: IMAP auth, schema, and a real migration applied against local Postgres). `nodemailer` for SMTP still to be wired up. Revisit if this stops fitting.
 2. **UI/app shape**: full web app (Next.js, like inbox-zero) vs. a lighter service that could plug into inbox-zero later vs. CLI-first.
 3. **Code reuse**: confirmed as a fresh scaffold (no inbox-zero code carried over) — but the *rules engine* and *AI prompt/matching logic* are still worth referencing conceptually rather than reinventing from zero. Worth deciding per-component rather than all-or-nothing.
 4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet — confirm this is the right first slice.

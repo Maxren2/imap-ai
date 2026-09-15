@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  provider  String
+  createdAt DateTime  @default(now())
+  mailboxes Mailbox[]
+}
+
+model Mailbox {
+  id          String    @id @default(cuid())
+  accountId   String
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name        String
+  uidValidity BigInt
+  lastSeenUid Int       @default(0)
+  createdAt   DateTime  @default(now())
+  messages    Message[]
+
+  @@unique([accountId, name])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  mailboxId      String
+  mailbox        Mailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  uid            Int
+  gmailThreadId  String?
+  gmailMessageId String?
+  subject        String?
+  fromAddress    String?
+  fromName       String?
+  date           DateTime
+  flags          String[]
+  labels         String[]
+  createdAt      DateTime @default(now())
+
+  @@unique([mailboxId, uid])
+  @@index([gmailThreadId])
+}

@@ -5,16 +5,27 @@
   "type": "module",
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
+    "sync": "tsx src/sync.ts",
+    "db:up": "docker compose up -d postgres",
+    "db:migrate": "prisma migrate dev",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@prisma/client": "^5.20.0",
     "dotenv": "^16.4.5",
     "google-auth-library": "^9.14.1",
     "imapflow": "^1.0.171"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
+    "prisma": "^5.20.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@prisma/client@5.22.0": true,
+    "prisma@5.22.0": true,
+    "@prisma/engines@5.22.0": true
   }
 }
