@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { fontFamily } from "tailwindcss/defaultTheme";
 
 const config: Config = {
   darkMode: "class",
@@ -12,6 +13,14 @@ const config: Config = {
   		}
   	},
   	extend: {
+  		fontFamily: {
+  			// Matches inbox-zero's real typography (its app shell sets this
+  			// exact font as `font-inter`, layered over a separate marketing-site
+  			// font this project has no equivalent split for) -- applied as the
+  			// default `sans` here since this whole app is the equivalent of
+  			// inbox-zero's authenticated app shell, not a marketing site plus one.
+  			sans: ['var(--font-inter)', ...fontFamily.sans]
+  		},
   		colors: {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
