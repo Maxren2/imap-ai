@@ -38,7 +38,8 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 
 ### 4.2 Outbound (SMTP)
 
-- Sending goes over SMTP. Unlike the REST APIs, plain SMTP does **not** automatically save a copy to Sent — the client must `APPEND` the sent message to the Sent folder itself, with correct `In-Reply-To`/`References` headers so IMAP thread linkage matches what the REST API would have produced.
+- Sending goes over SMTP. Unlike the REST APIs, plain SMTP does **not** automatically save a copy to Sent — the client must `APPEND` the sent message to the Sent folder itself, with correct `In-Reply-To`/`References` headers so IMAP thread linkage matches what the REST API would have produced. Verified against a real Gmail account: send + append both confirmed (delivery to INBOX, and a byte-identical copy in Sent).
+- The Sent folder must be located via the **SPECIAL-USE** extension (`\Sent` flag), not a hardcoded path — confirmed necessary in testing, since a real account's Sent folder can be locale-dependent (`[Gmail]/Sent Mail` in English, `[Gmail]/Gesendet` in German, etc., not a fixed string).
 
 ### 4.3 Background processing
 
