@@ -22,7 +22,7 @@ import {
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { Loader } from "@/components/ai-elements/loader";
 import { Button } from "@/components/ui/button";
-import { archiveSenders } from "@/app/bulk-archive/actions";
+import { archiveSenders } from "@/app/(app)/bulk-archive/actions";
 import { labelSenderMessages } from "@/app/mail-actions";
 
 // Deliberately mapped to real, working tools (listRules/searchInbox/

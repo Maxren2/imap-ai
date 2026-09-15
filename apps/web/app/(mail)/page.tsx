@@ -2,22 +2,21 @@ import { prisma } from "@imap-ai/core/db";
 import { ThreadList } from "@/components/thread-list";
 import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
 import { Button } from "@/components/ui/button";
-import { triggerBackfill, getLatestHomeBackgroundRuns, getInboxThreads } from "./mail-actions";
+import { triggerBackfill, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
 import { INBOX_PAGE_SIZE } from "@/lib/constants";
 import { Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [account, inboxCount, threadCountRows, threadMessages, inbox, backgroundRuns] = await Promise.all([
+  const [account, inboxCount, threadCounts, threadMessages, inbox, backgroundRuns] = await Promise.all([
     prisma.account.findFirst(),
     prisma.message.count({ where: { inInbox: true } }),
-    prisma.message.findMany({ where: { inInbox: true }, distinct: ["gmailThreadId"], select: { id: true } }),
+    getInboxThreadCounts(),
     getInboxThreads(),
     prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
     getLatestHomeBackgroundRuns(),
   ]);
-  const threadCount = threadCountRows.length;
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
@@ -46,7 +45,12 @@ export default async function HomePage() {
       <BackgroundRunsPanel initialRuns={backgroundRuns} fetchRuns={getLatestHomeBackgroundRuns} />
 
       <div className="mt-6">
-        <ThreadList messages={threadMessages} totalCount={threadCount} pageSize={INBOX_PAGE_SIZE} />
+        <ThreadList
+          messages={threadMessages}
+          totalCount={threadCounts.total}
+          unreadCount={threadCounts.unread}
+          pageSize={INBOX_PAGE_SIZE}
+        />
       </div>
     </main>
   );

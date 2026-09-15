@@ -14,7 +14,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { createChat, renameChat, deleteChat } from "@/app/chat/actions";
+import { createChat, renameChat, deleteChat } from "@/app/(app)/chat/actions";
 
 export interface ChatSidebarRow {
   id: string;

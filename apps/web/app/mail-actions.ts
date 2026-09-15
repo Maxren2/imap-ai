@@ -166,7 +166,7 @@ interface ThreadRowRaw {
  * original write-up (now superseded by this function) for why not
  * OFFSET-based.
  */
-export async function getInboxThreads(beforeIso?: string): Promise<ThreadListMessagePlain[]> {
+export async function getInboxThreads(beforeIso?: string, unreadOnly?: boolean): Promise<ThreadListMessagePlain[]> {
   const cutoff = beforeIso ? new Date(beforeIso) : null;
 
   const rows = await prisma.$queryRaw<ThreadRowRaw[]>`
@@ -187,6 +187,7 @@ export async function getInboxThreads(beforeIso?: string): Promise<ThreadListMes
     FROM latest
     JOIN stats ON stats."gmailThreadId" = latest."gmailThreadId"
     WHERE (${cutoff}::timestamp IS NULL OR latest.date < ${cutoff}::timestamp)
+      AND (${unreadOnly ?? false} = false OR stats."hasUnread" = true)
     ORDER BY latest.date DESC
     LIMIT ${INBOX_PAGE_SIZE}
   `;
@@ -205,6 +206,20 @@ export async function getInboxThreads(beforeIso?: string): Promise<ThreadListMes
     messageCount: Number(row.messageCount),
     hasUnread: row.hasUnread,
   }));
+}
+
+/** Distinct-thread totals for the Inbox's All/Unread tab labels -- a thread counts as unread if any message in it is. */
+export async function getInboxThreadCounts(): Promise<{ total: number; unread: number }> {
+  const rows = await prisma.$queryRaw<{ total: bigint; unread: bigint }[]>`
+    SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "hasUnread") AS unread
+    FROM (
+      SELECT "gmailThreadId", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
+      FROM "Message"
+      WHERE "inInbox" = true
+      GROUP BY "gmailThreadId"
+    ) t
+  `;
+  return { total: Number(rows[0].total), unread: Number(rows[0].unread) };
 }
 
 /**

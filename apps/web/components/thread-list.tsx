@@ -5,10 +5,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Archive, Loader2, CheckCircle2 } from "lucide-react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 import { archiveThreads, fetchMissingSnippets, getInboxThreads, type ThreadListMessagePlain } from "@/app/mail-actions";
+
+type Filter = "all" | "unread";
 
 export type ThreadListMessage = ThreadListMessagePlain;
 
@@ -42,14 +45,18 @@ function threadKey(message: ThreadListMessage): string {
 export function ThreadList({
   messages,
   totalCount,
+  unreadCount,
   pageSize,
 }: {
   messages: ThreadListMessage[];
   totalCount: number;
+  unreadCount: number;
   pageSize: number;
 }) {
+  const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
+  const [isFiltering, setIsFiltering] = useState(false);
   const [localMessages, setLocalMessages] = useState(messages);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   // A page can return fewer rows than requested even when more exist further
@@ -58,6 +65,21 @@ export function ThreadList({
   // instead of assuming exactly `pageSize` always means there's another
   // page, and stop for good once a response comes back short.
   const [hasMore, setHasMore] = useState(messages.length === pageSize && messages.length < totalCount);
+  const activeTotalCount = filter === "unread" ? unreadCount : totalCount;
+
+  async function changeFilter(next: Filter) {
+    if (next === filter) return;
+    setFilter(next);
+    setSelected(new Set());
+    setIsFiltering(true);
+    try {
+      const first = await getInboxThreads(undefined, next === "unread");
+      setLocalMessages(first);
+      setHasMore(first.length === pageSize && first.length < (next === "unread" ? unreadCount : totalCount));
+    } finally {
+      setIsFiltering(false);
+    }
+  }
 
   const allSelected = localMessages.length > 0 && selected.size === localMessages.length;
   const someSelected = selected.size > 0;
@@ -111,7 +133,7 @@ export function ThreadList({
     setIsLoadingMore(true);
     try {
       const oldestDateIso = localMessages[localMessages.length - 1].dateIso;
-      const next = await getInboxThreads(oldestDateIso);
+      const next = await getInboxThreads(oldestDateIso, filter === "unread");
       setLocalMessages((prev) => [...prev, ...next]);
       setHasMore(next.length === pageSize);
     } finally {
@@ -121,6 +143,14 @@ export function ThreadList({
 
   return (
     <div className="rounded-lg border">
+      <div className="flex items-center gap-3 border-b px-3 py-2">
+        <Tabs value={filter} onValueChange={(v) => changeFilter(v as Filter)}>
+          <TabsList>
+            <TabsTrigger value="all">All ({totalCount.toLocaleString("en-US")})</TabsTrigger>
+            <TabsTrigger value="unread">Unread ({unreadCount.toLocaleString("en-US")})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
       <div className="flex items-center gap-3 border-b bg-muted/40 px-3 py-2">
         <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
         {someSelected ? (
@@ -132,7 +162,9 @@ export function ThreadList({
             </Button>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">{localMessages.length.toLocaleString("en-US")} threads</span>
+          <span className="text-sm text-muted-foreground">
+            {isFiltering ? "Loading..." : `${localMessages.length.toLocaleString("en-US")} threads`}
+          </span>
         )}
       </div>
 
@@ -208,7 +240,7 @@ export function ThreadList({
       {localMessages.length > 0 && (
         <div className="flex flex-col items-center gap-2 border-t px-3 py-3">
           <span className="text-xs text-muted-foreground">
-            Showing {localMessages.length.toLocaleString("en-US")} of {totalCount.toLocaleString("en-US")} threads
+            Showing {localMessages.length.toLocaleString("en-US")} of {activeTotalCount.toLocaleString("en-US")} threads
           </span>
           {hasMore && (
             <Button size="sm" variant="outline" disabled={isLoadingMore} onClick={loadMore}>
