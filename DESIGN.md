@@ -53,12 +53,14 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 - `Message` — mirrored metadata + lazily-fetched body, `uid`, Gmail `thrid`/`msgid` when applicable.
 - `Rule`, `Job` — carried over conceptually from inbox-zero's model; not yet decided whether to port code or reimplement.
 
-## 5. Open decisions (need your input before going further)
+## 5. Decisions (settled)
 
-1. **Tech stack**: settled for now — Node.js/TypeScript, `imapflow` for IMAP (auth, incremental sync, and IDLE push notifications all verified against a real Gmail account), Postgres + Prisma for the local mirror (schema and migration verified against real local Postgres). `nodemailer` for SMTP still to be wired up. Revisit if this stops fitting.
-2. **UI/app shape**: full web app (Next.js, like inbox-zero) vs. a lighter service that could plug into inbox-zero later vs. CLI-first.
-3. **Code reuse**: confirmed as a fresh scaffold (no inbox-zero code carried over) — but the *rules engine* and *AI prompt/matching logic* are still worth referencing conceptually rather than reinventing from zero. Worth deciding per-component rather than all-or-nothing.
-4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet — confirm this is the right first slice.
+1. **Tech stack**: Node.js/TypeScript, `imapflow` for IMAP, `nodemailer` for SMTP, Postgres + Prisma for the local mirror. Auth, incremental sync, IDLE push, and SMTP send + Sent-folder append are all built and verified live against a real Gmail account.
+2. **UI/app shape**: full web app (Next.js, matching inbox-zero's shape), not a CLI-first or lighter-service approach. Repo restructured into an npm workspace monorepo: `packages/core` (the ingest/sync/send logic above, importable, not just runnable as scripts) and `apps/web` (the Next.js app). First slice (a page listing synced messages, reading live from the shared Postgres DB) built and verified running.
+3. **Code reuse**: rebuild fresh rather than port inbox-zero's rules/AI-matching code — inbox-zero's logic assumes its own API-based data model and Prisma schema, which don't match this project's local-mirror shape closely enough to be a clean port. Reference its approach conceptually where useful, but write new code against this schema.
+4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet. Confirmed.
+
+Next build step: the rules/AI-matching engine (not started), operating against the local Postgres mirror rather than live IMAP/API calls.
 
 ## 6. Risks
 

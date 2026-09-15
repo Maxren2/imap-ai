@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env.js";
 import { ImapFlow } from "imapflow";
 import { getGmailAccessToken } from "./gmail-oauth.js";
 import { ensureAccount, syncOpenedMailbox } from "./mailbox-sync.js";

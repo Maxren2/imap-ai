@@ -1,4 +1,9 @@
 node_modules/
 dist/
 .env
+.env.local
 *.log
+.next/
+next-env.d.ts
+*.tsbuildinfo
+packages/core/src/generated/

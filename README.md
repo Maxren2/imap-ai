@@ -17,9 +17,18 @@ Early stage, building up from the riskiest parts of the design first:
 3. **Real-time watcher** (`npm run watch`) — does a catch-up sync, then holds an IMAP IDLE connection open and re-syncs whenever new mail arrives. Verified against a real Gmail account: appending a message while the watcher was idling triggered a sync within seconds.
 4. **SMTP send** (`npm run smtp-test`) — sends via SMTP (XOAUTH2) and appends the same raw message to the account's Sent folder over IMAP, since plain SMTP doesn't save a sent copy. The Sent folder is located via the SPECIAL-USE extension rather than a guessed path -- confirmed necessary in testing, since this account's Sent folder is actually `[Gmail]/Gesendet` (German locale), not the commonly-assumed `[Gmail]/Sent Mail`.
 
-All four verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
+5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. First page lists the account and recent synced messages. Verified running against real data.
 
-Not yet built: the rules/AI engine and any UI. See [DESIGN.md](DESIGN.md) for the full plan and open decisions (UI shape, MVP scope) still to be settled.
+All five verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
+
+Not yet built: the rules/AI-matching engine. See [DESIGN.md](DESIGN.md) for the full plan.
+
+## Structure
+
+An npm workspace monorepo:
+
+- `packages/core` — the IMAP/SMTP/sync logic above (`imap-test`, `sync`, `watch`, `smtp-test` all live here, runnable directly or imported).
+- `apps/web` — the Next.js app.
 
 ## Getting Started
 
@@ -51,6 +60,9 @@ npm run imap-test   # connects and lists the last 10 INBOX messages, no DB invol
 npm run sync         # one-shot incremental sync of INBOX metadata into Postgres
 npm run watch         # catches up, then stays connected and syncs new mail as it arrives (Ctrl+C to stop)
 npm run smtp-test     # sends a self-addressed test email and appends it to the Sent folder
+npm run dev            # starts the Next.js app at http://localhost:3000
 ```
 
 Both `sync` and `watch` are safe to re-run — they only fetch UIDs newer than the last one seen per mailbox, and reset the cursor automatically if the server's UIDVALIDITY changes.
+
+All commands run from the repo root and delegate to the right workspace.

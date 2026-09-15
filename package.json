@@ -2,28 +2,20 @@
   "name": "imap-ai",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "imap-test": "tsx src/imap-test.ts",
-    "sync": "tsx src/sync.ts",
-    "watch": "tsx src/watch.ts",
-    "smtp-test": "tsx src/smtp-test.ts",
+    "imap-test": "npm run imap-test -w @imap-ai/core",
+    "sync": "npm run sync -w @imap-ai/core",
+    "watch": "npm run watch -w @imap-ai/core",
+    "smtp-test": "npm run smtp-test -w @imap-ai/core",
     "db:up": "docker compose up -d postgres",
-    "db:migrate": "prisma migrate dev",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.20.0",
-    "dotenv": "^16.4.5",
-    "google-auth-library": "^9.14.1",
-    "imapflow": "^1.0.171",
-    "nodemailer": "^10.0.10"
-  },
-  "devDependencies": {
-    "@types/node": "^22.7.4",
-    "prisma": "^5.20.0",
-    "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "db:migrate": "npm run db:migrate -w @imap-ai/core",
+    "typecheck": "npm run typecheck -w @imap-ai/core && npm run typecheck -w @imap-ai/web",
+    "dev": "npm run dev -w @imap-ai/web",
+    "postinstall": "npm run generate -w @imap-ai/core"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
