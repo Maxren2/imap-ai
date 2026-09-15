@@ -7,6 +7,7 @@ import { ensureMessageBody } from "@imap-ai/core/body";
 import { revalidatePath } from "next/cache";
 import { runNpmScript, getLatestBackgroundRuns } from "@/lib/background-run";
 import type { BackgroundRunRow } from "@/lib/background-run";
+import { INBOX_PAGE_SIZE } from "@/lib/constants";
 
 /**
  * Archives messages directly from the mail list (not via the rules
@@ -54,6 +55,59 @@ export async function archiveMessages(messageIds: string[]): Promise<{ archived:
 
   revalidatePath("/");
   return { archived };
+}
+
+export interface ThreadListMessagePlain {
+  id: string;
+  subject: string | null;
+  fromAddress: string | null;
+  fromName: string | null;
+  dateIso: string;
+  labels: string[];
+  flags: string[];
+  snippet: string | null;
+  bodyFetched: boolean;
+}
+
+/**
+ * Keyset ("before this date") pagination for the inbox list -- used for
+ * both the initial server-rendered page (no cursor) and the client-side
+ * "Load more" button (cursor = the last-shown message's date). Not
+ * OFFSET-based, since an ever-growing/shifting inbox makes offsets drift (a
+ * new message arriving while paging shifts every later offset by one,
+ * causing skipped or duplicated rows); a date cursor doesn't have that
+ * problem as long as the list stays ordered by date desc, which it already
+ * is.
+ */
+export async function getInboxMessages(beforeIso?: string): Promise<ThreadListMessagePlain[]> {
+  const messages = await prisma.message.findMany({
+    where: { inInbox: true, ...(beforeIso ? { date: { lt: new Date(beforeIso) } } : {}) },
+    orderBy: { date: "desc" },
+    take: INBOX_PAGE_SIZE,
+    select: {
+      id: true,
+      subject: true,
+      fromAddress: true,
+      fromName: true,
+      date: true,
+      labels: true,
+      flags: true,
+      bodyText: true,
+      bodyFetchedAt: true,
+    },
+  });
+
+  return messages.map((message) => ({
+    id: message.id,
+    subject: message.subject,
+    fromAddress: message.fromAddress,
+    fromName: message.fromName,
+    dateIso: message.date.toISOString(),
+    labels: message.labels,
+    flags: message.flags,
+    snippet: message.bodyText ? message.bodyText.replace(/\s+/g, " ").trim().slice(0, 160) : null,
+    bodyFetched: message.bodyFetchedAt !== null,
+  }));
 }
 
 /**

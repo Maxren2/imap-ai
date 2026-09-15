@@ -7,19 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Archive, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { archiveMessages, fetchMissingSnippets } from "@/app/mail-actions";
+import { archiveMessages, fetchMissingSnippets, getInboxMessages, type ThreadListMessagePlain } from "@/app/mail-actions";
 
-export interface ThreadListMessage {
-  id: string;
-  subject: string | null;
-  fromAddress: string | null;
-  fromName: string | null;
-  dateIso: string;
-  labels: string[];
-  flags: string[];
-  snippet: string | null;
-  bodyFetched: boolean;
-}
+export type ThreadListMessage = ThreadListMessagePlain;
 
 function initials(name: string | null, address: string | null): string {
   const source = name || address || "?";
@@ -43,10 +33,25 @@ function formatRelativeDate(iso: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
+export function ThreadList({
+  messages,
+  totalCount,
+  pageSize,
+}: {
+  messages: ThreadListMessage[];
+  totalCount: number;
+  pageSize: number;
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [localMessages, setLocalMessages] = useState(messages);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // A page can return fewer rows than requested even when more exist further
+  // back (rare, but possible after this page's own archive actions remove
+  // rows) -- track "more to load" from the actual last response size
+  // instead of assuming exactly `pageSize` always means there's another
+  // page, and stop for good once a response comes back short.
+  const [hasMore, setHasMore] = useState(messages.length === pageSize && messages.length < totalCount);
 
   const allSelected = localMessages.length > 0 && selected.size === localMessages.length;
   const someSelected = selected.size > 0;
@@ -95,6 +100,19 @@ export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
 
+  async function loadMore() {
+    if (localMessages.length === 0) return;
+    setIsLoadingMore(true);
+    try {
+      const oldestDateIso = localMessages[localMessages.length - 1].dateIso;
+      const next = await getInboxMessages(oldestDateIso);
+      setLocalMessages((prev) => [...prev, ...next]);
+      setHasMore(next.length === pageSize);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border">
       <div className="flex items-center gap-3 border-b bg-muted/40 px-3 py-2">
@@ -108,7 +126,7 @@ export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
             </Button>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">{localMessages.length.toLocaleString()} messages</span>
+          <span className="text-sm text-muted-foreground">{localMessages.length.toLocaleString("en-US")} messages</span>
         )}
       </div>
 
@@ -162,6 +180,20 @@ export function ThreadList({ messages }: { messages: ThreadListMessage[] }) {
 
       {localMessages.length === 0 && (
         <p className="px-3 py-8 text-center text-sm text-muted-foreground">Inbox zero. Nothing here.</p>
+      )}
+
+      {localMessages.length > 0 && (
+        <div className="flex flex-col items-center gap-2 border-t px-3 py-3">
+          <span className="text-xs text-muted-foreground">
+            Showing {localMessages.length.toLocaleString("en-US")} of {totalCount.toLocaleString("en-US")} in your inbox
+          </span>
+          {hasMore && (
+            <Button size="sm" variant="outline" disabled={isLoadingMore} onClick={loadMore}>
+              {isLoadingMore && <Loader2 className="animate-spin" />}
+              Load more
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
