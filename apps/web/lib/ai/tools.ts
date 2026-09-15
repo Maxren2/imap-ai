@@ -87,6 +87,32 @@ export function createChatTools(accountId: string) {
       },
     }),
 
+    // Deliberately NOT a mutating tool, despite the name/description
+    // sounding like it archives on its own -- this only *proposes* an
+    // archive (a read-only count query). The AI SDK's built-in tool-approval
+    // mechanism (`toolApproval` on streamText) was tried first and found
+    // unreliable in live testing: after a real Approve click, the model
+    // sometimes fabricated a success message in plain text without the
+    // tool's `execute` ever actually re-running, meaning it would report an
+    // archive as done when it silently wasn't -- unacceptable for a
+    // mutating action. Instead, the real mutation happens via a plain
+    // button in the chat UI (see chat-client.tsx) that calls the
+    // bulk-archive server action DIRECTLY, bypassing the model entirely for
+    // the actual execution step -- simpler and independently verifiable,
+    // not dependent on a bleeding-edge SDK subsystem this project can't
+    // fully trust yet.
+    archiveSender: tool({
+      description:
+        "Use this when the user wants to archive mail from a sender right now (a one-time request) -- do NOT use createRule for this. Looks up how many inboxed messages that sender has. This does NOT archive anything -- after calling this, tell the user you've found the count and that they need to click the Confirm Archive button themselves to actually do it. Never tell the user their mail has been archived just because you called this tool.",
+      inputSchema: z.object({
+        fromAddress: z.string().min(1).describe("The sender's email address to check"),
+      }),
+      execute: async ({ fromAddress }) => {
+        const inboxCount = await prisma.message.count({ where: { fromAddress, inInbox: true } });
+        return { fromAddress, inboxCount };
+      },
+    }),
+
     searchInbox: tool({
       description: "Search the user's synced mail by sender address/name or subject substring (case-insensitive). Returns a count and a few recent examples.",
       inputSchema: z.object({

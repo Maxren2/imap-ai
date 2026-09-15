@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -18,12 +19,33 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { Loader } from "@/components/ai-elements/loader";
+import { Button } from "@/components/ui/button";
+import { archiveSenders } from "@/app/bulk-archive/actions";
 
 export function ChatClient({ initialMessages }: { initialMessages: UIMessage[] }) {
   const { messages, sendMessage, status } = useChat({
     messages: initialMessages,
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
+
+  // archiveSender is a read-only "how many messages would this affect"
+  // lookup (see lib/ai/tools.ts) -- the actual archive only happens when
+  // the user clicks this button, which calls the real server action
+  // directly, bypassing the model entirely. Keyed by toolCallId so each
+  // tool call in the conversation tracks its own confirm/pending/done
+  // state independently.
+  const [archiveResults, setArchiveResults] = useState<Record<string, { archived: number }>>({});
+  const [pendingToolCallId, setPendingToolCallId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function confirmArchive(toolCallId: string, fromAddress: string) {
+    setPendingToolCallId(toolCallId);
+    startTransition(async () => {
+      const result = await archiveSenders([fromAddress]);
+      setArchiveResults((prev) => ({ ...prev, [toolCallId]: result }));
+      setPendingToolCallId(null);
+    });
+  }
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
@@ -46,17 +68,41 @@ export function ChatClient({ initialMessages }: { initialMessages: UIMessage[] }
                     if (part.type.startsWith("tool-")) {
                       const toolPart = part as unknown as {
                         type: `tool-${string}`;
+                        toolCallId: string;
                         state: "input-streaming" | "input-available" | "output-available" | "output-error";
                         input: unknown;
                         output?: unknown;
                         errorText?: string;
                       };
+                      const isArchiveLookup = toolPart.type === "tool-archiveSender" && toolPart.state === "output-available";
+                      const fromAddress = (toolPart.input as { fromAddress?: string } | undefined)?.fromAddress;
+                      const archiveResult = archiveResults[toolPart.toolCallId];
+
                       return (
                         <Tool key={i}>
                           <ToolHeader type={toolPart.type} state={toolPart.state} />
                           <ToolContent>
                             <ToolInput input={toolPart.input} />
                             <ToolOutput output={toolPart.output} errorText={toolPart.errorText} />
+                            {isArchiveLookup && fromAddress && (
+                              <div className="px-4 pb-4">
+                                {archiveResult ? (
+                                  <p className="text-sm text-muted-foreground">
+                                    Archived {archiveResult.archived} message{archiveResult.archived === 1 ? "" : "s"} from{" "}
+                                    {fromAddress}.
+                                  </p>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    disabled={isPending && pendingToolCallId === toolPart.toolCallId}
+                                    onClick={() => confirmArchive(toolPart.toolCallId, fromAddress)}
+                                  >
+                                    {isPending && pendingToolCallId === toolPart.toolCallId && <Loader2 className="animate-spin" />}
+                                    Confirm Archive
+                                  </Button>
+                                )}
+                              </div>
+                            )}
                           </ToolContent>
                         </Tool>
                       );
