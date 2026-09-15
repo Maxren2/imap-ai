@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass } from "lucide-react";
+import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
   { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive },
   { title: "No-Reply", href: "/no-reply", icon: Hourglass },
+  { title: "Cold Email Blocker", href: "/cold-email-blocker", icon: ShieldOff },
   { title: "Analytics", href: "/stats", icon: BarChart3 },
 ];
 

@@ -37,6 +37,23 @@ export async function evaluateAiPrompt(config: OllamaConfig, input: AiMatchInput
     body: JSON.stringify({
       model: config.model,
       stream: false,
+      // Deliberately left at the default (thinking enabled, for models
+      // like qwen3 that support it) rather than disabled. A `think: false`
+      // pass was tried first, prompted by one call that took 10+ minutes --
+      // that turned out to be the Ollama server restarting mid-request, not
+      // thinking mode itself (confirmed once the server was healthy again:
+      // a warm thinking-enabled call took ~25s, not minutes). More
+      // importantly, thinking measurably improved classification accuracy
+      // on messy real-world input: the same borderline message (an
+      // insurance premium notice with raw HTML/CSS fragments leaked into
+      // its extracted body text) was correctly classified "not cold" with
+      // thinking enabled, but produced a false positive without it.
+      // Ollama's response keeps `message.content` clean of the `thinking`
+      // field regardless (confirmed directly), so this doesn't risk the
+      // answer-parsing below. ~25s/candidate is fine for rules:run's
+      // background batch use; the chat feature has its own separate,
+      // interactive-latency reason for disabling thinking via
+      // ollama-ai-provider-v2, which is unaffected by this file.
       options: { temperature: 0 },
       messages: [
         {

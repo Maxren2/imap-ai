@@ -16,6 +16,7 @@ model Account {
   mailboxes Mailbox[]
   rules     Rule[]
   senderStatuses SenderStatus[]
+  coldEmailExceptions ColdEmailException[]
   chat      Chat?
 }
 
@@ -111,6 +112,7 @@ model Message {
   unsubscribeHeadersFetchedAt DateTime?
   createdAt      DateTime    @default(now())
   ruleMatches    RuleMatch[]
+  ruleAiEvaluations RuleAiEvaluation[]
 
   @@unique([mailboxId, uid])
   @@index([gmailThreadId])
@@ -134,12 +136,37 @@ model SenderStatus {
   @@unique([accountId, senderAddress])
 }
 
+// A sender the user explicitly said is not a cold email, for the Cold
+// Email Blocker feature -- inbox-zero's real version folds this into a
+// generic Group/GroupItem "learned pattern" table; this project doesn't
+// have that abstraction, so it's a small dedicated table instead (same
+// pattern as SenderStatus above). Presence of a row is the exclusion --
+// there's no "confirmed cold" counterpart yet (a RuleMatch on the
+// cold-email Rule already covers that).
+model ColdEmailException {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  senderAddress String
+  createdAt     DateTime @default(now())
+
+  @@unique([accountId, senderAddress])
+}
+
 model Rule {
   id         String      @id @default(cuid())
   accountId  String
   account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
   enabled    Boolean     @default(true)
+  // Marks a rule as owning a built-in feature (currently just
+  // "COLD_EMAIL") so that feature can find its rule reliably instead of by
+  // name -- a plain string (validated in code), not a Prisma enum, for the
+  // same reason SenderStatus.status is a string. Nullable + unique: a
+  // Postgres unique constraint treats multiple NULLs as distinct, so
+  // ordinary user-created rules (systemType left unset) never collide with
+  // each other, only a second attempt at the same system type would.
+  systemType String?
   // RuleCondition[] (see packages/core/src/rules/types.ts) -- ALL conditions
   // must match (AND) for v1. Stored as JSON rather than normalized rows
   // since there's no UI yet to justify the extra join complexity. At least
@@ -157,8 +184,10 @@ model Rule {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   matches    RuleMatch[]
+  aiEvaluations RuleAiEvaluation[]
 
   @@unique([accountId, name])
+  @@unique([accountId, systemType])
 }
 
 model RuleMatch {
@@ -174,6 +203,28 @@ model RuleMatch {
   // independently and idempotently.
   actionsAppliedAt DateTime?
   actionsError     String?
+
+  @@unique([ruleId, messageId])
+  @@index([messageId])
+}
+
+// Marks a message as already AI-evaluated for a rule, regardless of
+// whether it matched -- RuleMatch only records genuine matches, so
+// without this, a message the AI said "no" to has no record of having
+// been checked at all and would be re-selected as a candidate (and
+// re-sent to the AI) on every future rules:run, forever, at the expense
+// of ever reaching older/different candidates once a rule's per-run AI
+// cap (RULES_AI_MAX_PER_RUN) is smaller than its backlog -- a real bug
+// found while running Cold Email Blocker's detection against ~11,000
+// real candidates for the first time. run.ts's candidate query excludes
+// messages with either a RuleMatch or a row here.
+model RuleAiEvaluation {
+  id          String   @id @default(cuid())
+  ruleId      String
+  rule        Rule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  messageId   String
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  evaluatedAt DateTime @default(now())
 
   @@unique([ruleId, messageId])
   @@index([messageId])

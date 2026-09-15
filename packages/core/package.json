@@ -15,7 +15,8 @@
     "./rules/actions": "./src/rules/actions.ts",
     "./imap-connect": "./src/imap-connect.ts",
     "./unsubscribe": "./src/unsubscribe.ts",
-    "./body": "./src/body.ts"
+    "./body": "./src/body.ts",
+    "./ai/ollama": "./src/ai/ollama.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
@@ -29,6 +30,7 @@
     "rules:apply-actions": "tsx src/rules/apply-actions.ts",
     "rules:seed-example": "tsx src/rules/seed-example-rule.ts",
     "rules:seed-basic": "tsx src/rules/seed-basic-rules.ts",
+    "rules:seed-cold-email": "tsx src/rules/seed-cold-email.ts",
     "db:up": "docker compose -f ../../docker-compose.yml up -d postgres",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "generate": "prisma generate",

@@ -71,12 +71,22 @@ async function main() {
         );
       }
 
-      // Only messages this rule hasn't already matched -- re-running is
-      // cheap and safe, it just picks up newly-synced mail. Ordered
-      // newest-first so AI evaluation (capped below) prioritizes recent
-      // mail over old backlog.
+      // Only messages this rule hasn't already matched, or (for AI rules)
+      // already evaluated and found not to match -- without excluding the
+      // latter too, a non-matching message would be re-selected (and
+      // re-sent to the AI) on every future run forever, since only real
+      // matches get a RuleMatch row. Combined with the "newest first, capped
+      // per run" ordering below, that would mean a rule's per-run AI cap
+      // smaller than its backlog could NEVER progress past the same newest
+      // N candidates, no matter how many times it's re-run -- a real bug
+      // found running Cold Email Blocker against ~11,000 real candidates
+      // for the first time with a low RULES_AI_MAX_PER_RUN.
       const candidates: Candidate[] = await prisma.message.findMany({
-        where: { mailbox: { accountId: rule.accountId }, ruleMatches: { none: { ruleId: rule.id } } },
+        where: {
+          mailbox: { accountId: rule.accountId },
+          ruleMatches: { none: { ruleId: rule.id } },
+          ruleAiEvaluations: { none: { ruleId: rule.id } },
+        },
         orderBy: { date: "desc" },
         select: {
           id: true,
@@ -101,15 +111,36 @@ async function main() {
         finalMatches = [];
       } else {
         const aiCandidates = deterministicPass.slice(0, AI_MAX_PER_RUN);
-        const aiResults = await mapWithConcurrency(aiCandidates, AI_CONCURRENCY, async (message) => {
+
+        // Body fetches go through one shared IMAP connection, so they're
+        // done sequentially here rather than inside the concurrent AI step
+        // below -- imapflow's `download()` returns a streaming response,
+        // and running several of those concurrently on the same connection
+        // was found to corrupt the stream (a message's download resolving
+        // to something with no async iterator, crashing the whole worker)
+        // rather than erroring cleanly. Most candidates already have a
+        // cached body from a prior run (ensureMessageBody returns
+        // immediately for those), so this is only slow for genuinely new
+        // fetches.
+        const bodies = new Map<string, string | null>();
+        for (const message of aiCandidates) {
           try {
-            const body = await ensureMessageBody(imapClient!, message);
+            bodies.set(message.id, await ensureMessageBody(imapClient!, message));
+          } catch (error) {
+            console.error(`Body fetch failed for message ${message.id} on rule "${rule.name}":`, error);
+          }
+        }
+
+        // Pure HTTP calls to Ollama from here on -- safe to run concurrently.
+        const aiResults = await mapWithConcurrency(aiCandidates, AI_CONCURRENCY, async (message) => {
+          if (!bodies.has(message.id)) return { message, matches: false };
+          try {
             const matches = await evaluateAiPrompt(ollamaConfig, {
               prompt: rule.aiPrompt!,
               subject: message.subject,
               fromAddress: message.fromAddress,
               fromName: message.fromName,
-              body,
+              body: bodies.get(message.id) ?? null,
             });
             return { message, matches };
           } catch (error) {
@@ -118,6 +149,19 @@ async function main() {
           }
         });
         finalMatches = aiResults.filter((r) => r.matches).map((r) => r.message);
+
+        // Record every candidate actually sent to the AI (matched or not)
+        // as evaluated, so a "no" doesn't get re-asked forever -- only
+        // candidates whose body fetch failed are left off, so those are
+        // retried (a fetch failure is more likely transient than a
+        // considered "no").
+        const evaluatedIds = aiCandidates.filter((message) => bodies.has(message.id)).map((message) => message.id);
+        if (evaluatedIds.length > 0) {
+          await prisma.ruleAiEvaluation.createMany({
+            data: evaluatedIds.map((messageId) => ({ ruleId: rule.id, messageId })),
+            skipDuplicates: true,
+          });
+        }
       }
 
       if (finalMatches.length > 0) {

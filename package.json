@@ -18,6 +18,7 @@
     "rules:apply-actions": "npm run rules:apply-actions -w @imap-ai/core",
     "rules:seed-example": "npm run rules:seed-example -w @imap-ai/core",
     "rules:seed-basic": "npm run rules:seed-basic -w @imap-ai/core",
+    "rules:seed-cold-email": "npm run rules:seed-cold-email -w @imap-ai/core",
     "db:up": "docker compose up -d postgres",
     "db:migrate": "npm run db:migrate -w @imap-ai/core",
     "typecheck": "npm run typecheck -w @imap-ai/core && npm run typecheck -w @imap-ai/web",
