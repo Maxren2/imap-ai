@@ -21,14 +21,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-interface NavItem {
+export interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   soon?: boolean;
 }
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   { title: "Inbox", href: "/", icon: Inbox },
   { title: "Chat", href: "/chat", icon: MessageCircle },
   { title: "Assistant", href: "/rules", icon: Sparkles },
