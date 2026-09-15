@@ -24,6 +24,11 @@ model Mailbox {
   name        String
   uidValidity BigInt
   lastSeenUid Int       @default(0)
+  // Marks the sync-window boundary from a date-bounded first sync (see
+  // SYNC_BACKFILL_DAYS): everything with uid <= this value has NOT been
+  // synced yet. Null once there's nothing left to backfill.
+  backfillBeforeUid Int?
+  fullyBackfilled   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   messages    Message[]
 
@@ -58,8 +63,14 @@ model Rule {
   enabled    Boolean     @default(true)
   // RuleCondition[] (see packages/core/src/rules/types.ts) -- ALL conditions
   // must match (AND) for v1. Stored as JSON rather than normalized rows
-  // since there's no UI yet to justify the extra join complexity.
-  conditions Json
+  // since there's no UI yet to justify the extra join complexity. At least
+  // one of conditions/aiPrompt must be set (enforced in application code).
+  conditions Json?
+  // Natural-language condition evaluated via a local LLM (see
+  // packages/core/src/ai/ollama.ts), against messages that already pass
+  // `conditions` (if any) -- conditions act as a cheap pre-filter before
+  // the more expensive AI call.
+  aiPrompt   String?
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   matches    RuleMatch[]

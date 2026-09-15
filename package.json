@@ -11,6 +11,7 @@
     "sync": "npm run sync -w @imap-ai/core",
     "watch": "npm run watch -w @imap-ai/core",
     "smtp-test": "npm run smtp-test -w @imap-ai/core",
+    "backfill": "npm run backfill -w @imap-ai/core",
     "rules:run": "npm run rules:run -w @imap-ai/core",
     "rules:seed-example": "npm run rules:seed-example -w @imap-ai/core",
     "db:up": "docker compose up -d postgres",

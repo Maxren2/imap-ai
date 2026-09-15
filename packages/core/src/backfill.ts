@@ -1,7 +1,7 @@
 import "./env.js";
 import { ImapFlow } from "imapflow";
 import { getGmailAccessToken } from "./gmail-oauth.js";
-import { ensureAccount, syncOpenedMailbox, resolveBackfillSince } from "./mailbox-sync.js";
+import { ensureAccount, backfillOlderMessages } from "./mailbox-sync.js";
 import { prisma } from "./db.js";
 
 function requireEnv(name: string): string {
@@ -29,20 +29,30 @@ async function connectImap(gmailAddress: string): Promise<ImapFlow> {
   return client;
 }
 
+/**
+ * Fetches everything a date-bounded first sync (SYNC_BACKFILL_DAYS) left
+ * behind, working backward until fully caught up. Run this whenever you
+ * want "all of it" after starting with the default recent-history window.
+ */
 async function main() {
   const gmailAddress = requireEnv("GMAIL_ADDRESS");
+  const mailboxName = "INBOX";
   const client = await connectImap(gmailAddress);
 
   try {
     const account = await ensureAccount(gmailAddress);
-    const mailboxName = "INBOX";
-
     const lock = await client.getMailboxLock(mailboxName);
+
     try {
-      const { count, highestUid } = await syncOpenedMailbox(client, account.id, mailboxName, {
-        backfillSince: resolveBackfillSince(),
+      const { totalFetched, complete } = await backfillOlderMessages(client, account.id, mailboxName, {
+        onProgress: ({ fetchedThisRun, remainingBeforeUid }) => {
+          console.log(
+            `Backfilled ${fetchedThisRun} message(s) so far` +
+              (remainingBeforeUid ? `, continuing below UID ${remainingBeforeUid}...` : ", done."),
+          );
+        },
       });
-      console.log(`${mailboxName}: synced ${count} new message(s), cursor now at UID ${highestUid}.`);
+      console.log(`Backfill ${complete ? "complete" : "stopped early"}. Total fetched: ${totalFetched}.`);
     } finally {
       lock.release();
     }
@@ -53,6 +63,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("sync failed:", error);
+  console.error("backfill failed:", error);
   process.exitCode = 1;
 });

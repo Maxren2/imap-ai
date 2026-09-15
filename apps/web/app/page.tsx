@@ -8,7 +8,7 @@ type RecentMessage = Prisma.MessageGetPayload<{
 }>;
 
 export default async function HomePage() {
-  const [account, messageCount, recentMessages, rules] = await Promise.all([
+  const [account, messageCount, recentMessages, rules, inbox] = await Promise.all([
     prisma.account.findFirst(),
     prisma.message.count(),
     prisma.message.findMany({
@@ -20,6 +20,7 @@ export default async function HomePage() {
       orderBy: { name: "asc" },
       include: { _count: { select: { matches: true } } },
     }),
+    prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
   ]);
 
   return (
@@ -28,6 +29,12 @@ export default async function HomePage() {
       {account ? (
         <p>
           Account: <strong>{account.email}</strong> &middot; {messageCount.toLocaleString()} messages mirrored
+          {inbox && !inbox.fullyBackfilled && (
+            <>
+              {" "}
+              &middot; older mail not yet synced (run <code>npm run backfill</code> to fetch all of it)
+            </>
+          )}
         </p>
       ) : (
         <p>No account synced yet. Run `npm run sync` from the repo root first.</p>
@@ -41,6 +48,7 @@ export default async function HomePage() {
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
               <th>Name</th>
+              <th>Type</th>
               <th>Enabled</th>
               <th>Matches</th>
             </tr>
@@ -49,6 +57,7 @@ export default async function HomePage() {
             {rules.map((rule) => (
               <tr key={rule.id} style={{ borderBottom: "1px solid #eee" }}>
                 <td>{rule.name}</td>
+                <td>{rule.aiPrompt ? (rule.conditions ? "rules + AI" : "AI") : "rules"}</td>
                 <td>{rule.enabled ? "yes" : "no"}</td>
                 <td>{rule._count.matches.toLocaleString()}</td>
               </tr>

@@ -18,6 +18,7 @@
     "sync": "tsx src/sync.ts",
     "watch": "tsx src/watch.ts",
     "smtp-test": "tsx src/smtp-test.ts",
+    "backfill": "tsx src/backfill.ts",
     "rules:run": "tsx src/rules/run.ts",
     "rules:seed-example": "tsx src/rules/seed-example-rule.ts",
     "db:up": "docker compose -f ../../docker-compose.yml up -d postgres",

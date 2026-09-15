@@ -16,7 +16,7 @@ function requireEnv(name: string): string {
 async function main() {
   const account = await prisma.account.findUniqueOrThrow({ where: { email: requireEnv("GMAIL_ADDRESS") } });
 
-  const rules: { name: string; conditions: RuleConditions }[] = [
+  const rules: { name: string; conditions?: RuleConditions; aiPrompt?: string }[] = [
     {
       name: "GitHub notifications",
       conditions: [{ field: "fromAddress", operator: "contains", value: "notifications@github.com" }],
@@ -25,13 +25,18 @@ async function main() {
       name: "Sent by me",
       conditions: [{ field: "labels", operator: "contains", value: "\\Sent" }],
     },
+    {
+      name: "Security alert (AI)",
+      aiPrompt:
+        "The email is a security alert or warning from a service about a new sign-in, device, or app getting access to my account.",
+    },
   ];
 
-  for (const { name, conditions } of rules) {
+  for (const { name, conditions, aiPrompt } of rules) {
     await prisma.rule.upsert({
       where: { accountId_name: { accountId: account.id, name } },
-      update: { conditions },
-      create: { accountId: account.id, name, conditions },
+      update: { conditions, aiPrompt },
+      create: { accountId: account.id, name, conditions, aiPrompt },
     });
     console.log(`Upserted rule "${name}".`);
   }

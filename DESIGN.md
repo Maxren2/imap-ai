@@ -60,17 +60,26 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 3. **Code reuse**: rebuild fresh rather than port inbox-zero's rules/AI-matching code — inbox-zero's logic assumes its own API-based data model and Prisma schema, which don't match this project's local-mirror shape closely enough to be a clean port. Reference its approach conceptually where useful, but write new code against this schema.
 4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet. Confirmed.
 
-## 7. Rules engine (v1, deterministic matching only)
+## 6. Sync scope: recent-history default, full backfill on demand
 
-- `Rule` model: `conditions` stored as JSON (array of `{field, operator, value}`, validated with zod), all conditions AND-combined -- no OR/grouping yet. Fields: `fromAddress`, `fromName`, `subject`, `labels`. Operators: `contains`, `equals`, `startsWith` (labels always does an exact-match-against-any-label check regardless of operator, since Gmail labels are discrete strings, not free text).
-- `RuleMatch` records which rule matched which message, unique per (rule, message) so `npm run rules:run` is idempotent and cheap to re-run after every sync.
-- Runs entirely against the local Postgres mirror -- no IMAP or API calls during evaluation, which is what actually eliminates the hidden per-match cost problem from the original inbox-zero design (see [[feedback-gmail-hidden-quota-costs]] in project memory): matching 11,000+ real messages against two rules took well under a second.
-- Verified against real synced mail: a "sender contains notifications@github.com" rule and a "has \Sent label" rule both produced correct, spot-checked matches.
+- A mailbox's **first** sync only fetches messages from the last `SYNC_BACKFILL_DAYS` (default 30; `all`/`0` for full history), via IMAP's `SINCE` search combined with the UID range. Steady-state `sync`/`watch` are unaffected -- they always pick up new mail going forward regardless of this setting, since it only bounds the initial catch-up.
+- `Mailbox.backfillBeforeUid` marks the boundary of what's *not* synced yet; `Mailbox.fullyBackfilled` is `true` once nothing's left. `npm run backfill` fetches everything below that boundary, working backward in paced batches (200 UIDs/batch, 500ms apart -- reusing the pacing lessons from the inbox-zero bulk-run feature) until caught up. Safe to interrupt: progress is persisted after every batch, so it resumes where it left off.
+- Verified live: a 7-day-bounded first sync against an isolated test mailbox correctly set the boundary, and a capped 2-batch backfill run correctly walked further back and persisted state, matching a hand-computed expectation (not just "it didn't crash" -- exact counts and boundary values checked).
+- The web app surfaces backfill status read-only (a line on the homepage when older mail is available); a toggle/button to trigger a full backfill from the UI is intentionally deferred, not yet built.
 
-**Deliberately not built yet**: AI-based/natural-language rule matching (the actual differentiator vs. simple filters), and executing any action on a match (label, archive, draft a reply). This slice is match-detection only.
+## 7. Rules engine
 
-## 6. Risks
+- `Rule.conditions` (optional): JSON array of `{field, operator, value}`, zod-validated, all AND-combined -- no OR/grouping yet. Fields: `fromAddress`, `fromName`, `subject`, `labels`. Operators: `contains`, `equals`, `startsWith` (labels always does an exact-match-against-any-label check, since Gmail labels are discrete strings, not free text).
+- `Rule.aiPrompt` (optional): a natural-language condition evaluated via a local LLM (Ollama's `/api/chat`, OpenAI-style). At least one of `conditions`/`aiPrompt` must be set. When both are set, `conditions` acts as a cheap pre-filter before the AI call -- correct even without cost pressure (Ollama has no external quota), since a local LLM call is still far slower than an in-process field check.
+- Metadata-only for AI matching so far (subject + sender, no body) -- message bodies aren't synced yet (see risk below), so match quality is bounded until that exists.
+- `RULES_AI_MAX_PER_RUN` (default 200) caps AI evaluations per rule per run, so a rule with a large untouched backlog doesn't turn one run into a multi-hour AI sweep -- the rest is picked up next run, same idea as the sync cursor. AI calls run at limited concurrency (3) against the local Ollama server.
+- `RuleMatch` records which rule matched which message, unique per (rule, message), so `npm run rules:run` is idempotent and cheap to re-run after every sync.
+- Verified live against real synced mail and a real local Ollama server (`llama3:latest`): a "sender contains notifications@github.com" rule, a "has \Sent label" rule, and an AI rule ("is this a security alert about a new sign-in") all produced correct, spot-checked matches -- the AI rule correctly picked the one real Google security-alert email out of 15 candidates evaluated, with no false positives.
 
-- Large one-time historical backfills could hit the Workspace daily bandwidth cap on very large mailboxes — needs a resumable, day-spanning backfill design (similar shape to the bulk-run job in the inbox-zero fork, but paced against bandwidth instead of quota units).
+**Deliberately not built yet**: executing any action on a match (label, archive, draft a reply) -- this is match-detection only.
+
+## 8. Risks
+
+- Large one-time historical backfills could hit the Workspace daily bandwidth cap on very large mailboxes -- the paced, resumable `backfillOlderMessages` design (section 6) is meant to keep any single run modest regardless of total mailbox size, but a truly enormous mailbox synced in "all" mode could still take a while.
 - IMAP behavior differs meaningfully across providers (Gmail extensions are Gmail-only; other providers vary in `UIDVALIDITY` stability, folder naming, etc.) — the generic-provider path needs to degrade gracefully rather than assuming Gmail semantics everywhere.
 - Storing mirrored message bodies locally increases the data-security surface compared to a stateless API pass-through — encryption at rest and a clear retention/deletion policy should be part of the design, not an afterthought.

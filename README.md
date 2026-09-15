@@ -13,16 +13,15 @@ Provider REST APIs (notably Gmail's) impose a fixed per-user quota-unit budget p
 Early stage, building up from the riskiest parts of the design first:
 
 1. **IMAP auth** (`npm run imap-test`) — authenticates to Gmail over IMAP via XOAUTH2 and lists recent messages.
-2. **Local mirror sync** (`npm run sync`) — incrementally syncs INBOX message metadata (envelope, flags, Gmail thread ID/labels) into a local Postgres database via Prisma, so later rule/AI evaluation reads from the DB instead of re-hitting IMAP.
+2. **Local mirror sync** (`npm run sync`) — incrementally syncs INBOX message metadata (envelope, flags, Gmail thread ID/labels) into a local Postgres database via Prisma, so later rule/AI evaluation reads from the DB instead of re-hitting IMAP. A mailbox's first sync only reaches back `SYNC_BACKFILL_DAYS` (default 30) by default; `npm run backfill` fetches everything older, in paced, resumable batches.
 3. **Real-time watcher** (`npm run watch`) — does a catch-up sync, then holds an IMAP IDLE connection open and re-syncs whenever new mail arrives. Verified against a real Gmail account: appending a message while the watcher was idling triggered a sync within seconds.
 4. **SMTP send** (`npm run smtp-test`) — sends via SMTP (XOAUTH2) and appends the same raw message to the account's Sent folder over IMAP, since plain SMTP doesn't save a sent copy. The Sent folder is located via the SPECIAL-USE extension rather than a guessed path -- confirmed necessary in testing, since this account's Sent folder is actually `[Gmail]/Gesendet` (German locale), not the commonly-assumed `[Gmail]/Sent Mail`.
+5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. Lists the account (with a note when older mail hasn't been backfilled yet), rules with live match counts and type (deterministic/AI), and recent synced messages.
+6. **Rules engine** (`npm run rules:run`) — evaluates enabled rules against the local mirror and records matches, idempotently. Two kinds of conditions, usable alone or combined: deterministic (AND-combined checks on sender/subject/labels) and AI (a natural-language prompt evaluated by a local Ollama model, metadata-only for now -- subject/sender, no body yet). No action execution (label/archive/reply) yet — this is match-detection only, and AI matching never touches IMAP/the Gmail API, only the local mirror plus your own Ollama server. `npm run rules:seed-example` creates three example rules (two deterministic, one AI) to try it against real synced mail.
 
-5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. Lists the account, rules with live match counts, and recent synced messages.
-6. **Rules engine** (`npm run rules:run`) — evaluates enabled rules (AND-combined conditions on sender/subject/labels, stored as JSON) against the local mirror and records matches, idempotently. No AI matching or actions (label/archive/reply) yet — this is match-detection only, reading purely from Postgres, no IMAP/API calls per evaluation. `npm run rules:seed-example` creates two example rules to try it against real synced mail.
+All six verified end-to-end against a real Gmail account, a real local Postgres instance, and (for AI matching) a real local Ollama server — not just typechecked.
 
-All six verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
-
-Not yet built: AI-based rule matching, and executing actions (label/archive/draft-reply) for a match. See [DESIGN.md](DESIGN.md) for the full plan.
+Not yet built: executing actions (label/archive/draft-reply) for a match, and a UI control for triggering a full backfill (the backend supports it via `npm run backfill`; a GUI toggle is intentionally deferred). See [DESIGN.md](DESIGN.md) for the full plan.
 
 ## Structure
 
@@ -46,6 +45,8 @@ Fill in `.env`:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — an OAuth2 client from a Google Cloud project with Gmail access enabled.
 - `GOOGLE_REFRESH_TOKEN` — a refresh token minted with the `https://mail.google.com/` scope specifically. The narrower `gmail.readonly`/`gmail.modify` scopes used by the Gmail REST API do **not** work for IMAP/SMTP — this is the one scope that grants IMAP/SMTP access. Use Google's OAuth Playground (https://developers.google.com/oauthplayground) with your own client credentials, or a short throwaway script using `google-auth-library`, to mint one against that scope.
 - `DATABASE_URL` — defaults to the local Postgres instance below; no change needed for local dev.
+- `SYNC_BACKFILL_DAYS` — optional, defaults to 30. `all` (or `0`) syncs full history on the first sync instead.
+- `OLLAMA_BASE_URL` / `OLLAMA_MODEL` — optional, only needed for AI-based rules (e.g. `http://<your-ollama-host>:<port>` and a model you've pulled there, such as `llama3:latest`). Rules with an AI prompt are skipped with a warning if unset.
 
 Start Postgres and apply the schema:
 
@@ -60,9 +61,10 @@ Then, either:
 npm run imap-test   # connects and lists the last 10 INBOX messages, no DB involved
 npm run sync         # one-shot incremental sync of INBOX metadata into Postgres
 npm run watch         # catches up, then stays connected and syncs new mail as it arrives (Ctrl+C to stop)
+npm run backfill       # fetches older mail left behind by a date-bounded first sync, paced and resumable
 npm run smtp-test     # sends a self-addressed test email and appends it to the Sent folder
 npm run dev            # starts the Next.js app at http://localhost:3000
-npm run rules:seed-example  # creates two example rules against the synced account
+npm run rules:seed-example  # creates three example rules (two deterministic, one AI) against the synced account
 npm run rules:run           # evaluates enabled rules against the local mirror
 ```
 

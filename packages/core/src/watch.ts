@@ -1,7 +1,7 @@
 import "./env.js";
 import { ImapFlow } from "imapflow";
 import { getGmailAccessToken } from "./gmail-oauth.js";
-import { ensureAccount, syncOpenedMailbox } from "./mailbox-sync.js";
+import { ensureAccount, syncOpenedMailbox, resolveBackfillSince } from "./mailbox-sync.js";
 import { prisma } from "./db.js";
 
 function requireEnv(name: string): string {
@@ -55,7 +55,9 @@ async function main() {
     const lock = await client.getMailboxLock(mailboxName);
 
     try {
-      const initial = await syncOpenedMailbox(client, account.id, mailboxName);
+      const initial = await syncOpenedMailbox(client, account.id, mailboxName, {
+        backfillSince: resolveBackfillSince(),
+      });
       console.log(
         `${mailboxName}: caught up (${initial.count} new message(s)), cursor at UID ${initial.highestUid}. Watching for new mail...`,
       );
