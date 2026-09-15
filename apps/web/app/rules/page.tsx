@@ -3,7 +3,7 @@ import { deleteRule, toggleRule, triggerRulesRun, triggerApplyActions, getLatest
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BackgroundRunsPanel } from "./BackgroundRunsPanel";
+import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
 import Link from "next/link";
 import { Plus, Play, Zap } from "lucide-react";
 
@@ -53,7 +53,7 @@ export default async function RulesPage() {
       <p className="mt-2 text-xs text-muted-foreground">
         These run in the background — live output below updates automatically while running.
       </p>
-      <BackgroundRunsPanel initialRuns={backgroundRuns} />
+      <BackgroundRunsPanel initialRuns={backgroundRuns} fetchRuns={getLatestBackgroundRuns} />
 
       {rules.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">

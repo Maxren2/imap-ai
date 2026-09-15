@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { getLatestBackgroundRuns, type BackgroundRunRow } from "./actions";
+import type { BackgroundRunRow } from "@/lib/background-run";
 
 const POLL_MS = 2000;
 
@@ -37,12 +37,25 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function BackgroundRunsPanel({ initialRuns }: { initialRuns: BackgroundRunRow[] }) {
+/**
+ * Shared by /rules ("Run detection now" / "Apply pending actions now") and
+ * the homepage ("Sync full history" / backfill) -- `fetchRuns` is passed in
+ * (rather than imported directly) so each caller can scope which
+ * BackgroundRun `kind`s it polls for, since both pages share one
+ * BackgroundRun table.
+ */
+export function BackgroundRunsPanel({
+  initialRuns,
+  fetchRuns,
+}: {
+  initialRuns: BackgroundRunRow[];
+  fetchRuns: () => Promise<BackgroundRunRow[]>;
+}) {
   const [runs, setRuns] = useState(initialRuns);
 
   // A plain `useState(initialRuns)` only uses the prop on first mount --
-  // when the "Run detection now" form submits and Next.js revalidates the
-  // page, this component gets fresh `initialRuns` props (now including the
+  // when a trigger form submits and Next.js revalidates the page, this
+  // component gets fresh `initialRuns` props (now including the
   // just-started run), but without this effect the already-mounted
   // component would keep showing whatever it first rendered, since
   // useState's initializer argument is ignored on re-renders. Found live:
@@ -58,10 +71,10 @@ export function BackgroundRunsPanel({ initialRuns }: { initialRuns: BackgroundRu
   useEffect(() => {
     if (!runs.some((run) => run.status === "running")) return;
     const timer = setTimeout(async () => {
-      setRuns(await getLatestBackgroundRuns());
+      setRuns(await fetchRuns());
     }, POLL_MS);
     return () => clearTimeout(timer);
-  }, [runs]);
+  }, [runs, fetchRuns]);
 
   if (runs.length === 0) return null;
 

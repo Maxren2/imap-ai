@@ -5,6 +5,8 @@ import { connectImap, requireEnv } from "@imap-ai/core/imap-connect";
 import { applyRuleActions } from "@imap-ai/core/rules/actions";
 import { ensureMessageBody } from "@imap-ai/core/body";
 import { revalidatePath } from "next/cache";
+import { runNpmScript, getLatestBackgroundRuns } from "@/lib/background-run";
+import type { BackgroundRunRow } from "@/lib/background-run";
 
 /**
  * Archives messages directly from the mail list (not via the rules
@@ -93,4 +95,20 @@ export async function fetchMissingSnippets(messageIds: string[]): Promise<Record
   }
 
   return snippets;
+}
+
+/**
+ * Triggers `npm run backfill` (fetches everything the date-bounded first
+ * sync left behind, working backward until fully caught up) as a tracked
+ * background run -- previously CLI-only. Reuses the same mechanism /rules
+ * uses for "Run detection now" (see apps/web/lib/background-run.ts).
+ */
+export async function triggerBackfill(): Promise<void> {
+  await runNpmScript("backfill", "backfill", "/");
+}
+
+export type { BackgroundRunRow };
+
+export async function getLatestHomeBackgroundRuns(): Promise<BackgroundRunRow[]> {
+  return getLatestBackgroundRuns(["backfill"]);
 }
