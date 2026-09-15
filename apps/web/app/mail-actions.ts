@@ -24,13 +24,7 @@ import { INBOX_PAGE_SIZE } from "@/lib/constants";
  * separately; a moved message just won't be actionable via IMAP again
  * until a future sync properly tracks it there.
  */
-export async function archiveMessages(messageIds: string[]): Promise<{ archived: number }> {
-  if (messageIds.length === 0) return { archived: 0 };
-
-  const messages = await prisma.message.findMany({
-    where: { id: { in: messageIds } },
-    select: { id: true, uid: true },
-  });
+async function archiveMessageRows(messages: { id: string; uid: number }[]): Promise<{ archived: number }> {
   if (messages.length === 0) return { archived: 0 };
 
   const gmailAddress = requireEnv("GMAIL_ADDRESS");
@@ -55,6 +49,29 @@ export async function archiveMessages(messageIds: string[]): Promise<{ archived:
 
   revalidatePath("/");
   return { archived };
+}
+
+export async function archiveMessages(messageIds: string[]): Promise<{ archived: number }> {
+  if (messageIds.length === 0) return { archived: 0 };
+  const messages = await prisma.message.findMany({ where: { id: { in: messageIds } }, select: { id: true, uid: true } });
+  return archiveMessageRows(messages);
+}
+
+/**
+ * Archives every currently-inboxed message in each given thread, not just
+ * the single (latest) message the grouped mail list actually displays for
+ * that thread -- matches Gmail's own "archive conversation" semantics.
+ * Without this, archiving a thread row would leave its earlier messages
+ * silently still in the inbox, invisible in the UI (since the list only
+ * ever shows one row per thread) but still there.
+ */
+export async function archiveThreads(threadIds: string[]): Promise<{ archived: number }> {
+  if (threadIds.length === 0) return { archived: 0 };
+  const messages = await prisma.message.findMany({
+    where: { gmailThreadId: { in: threadIds }, inInbox: true },
+    select: { id: true, uid: true },
+  });
+  return archiveMessageRows(messages);
 }
 
 /**
@@ -101,6 +118,7 @@ export async function labelSenderMessages(fromAddress: string, label: string): P
 
 export interface ThreadListMessagePlain {
   id: string;
+  gmailThreadId: string | null;
   subject: string | null;
   fromAddress: string | null;
   fromName: string | null;
@@ -109,46 +127,83 @@ export interface ThreadListMessagePlain {
   flags: string[];
   snippet: string | null;
   bodyFetched: boolean;
+  messageCount: number;
+  hasUnread: boolean;
+}
+
+interface ThreadRowRaw {
+  id: string;
+  gmailThreadId: string | null;
+  subject: string | null;
+  fromAddress: string | null;
+  fromName: string | null;
+  date: Date;
+  labels: string[];
+  flags: string[];
+  bodyText: string | null;
+  bodyFetchedAt: Date | null;
+  messageCount: bigint;
+  hasUnread: boolean;
 }
 
 /**
- * Keyset ("before this date") pagination for the inbox list -- used for
- * both the initial server-rendered page (no cursor) and the client-side
- * "Load more" button (cursor = the last-shown message's date). Not
- * OFFSET-based, since an ever-growing/shifting inbox makes offsets drift (a
- * new message arriving while paging shifts every later offset by one,
- * causing skipped or duplicated rows); a date cursor doesn't have that
- * problem as long as the list stays ordered by date desc, which it already
- * is.
+ * One row per Gmail conversation thread (grouped by `gmailThreadId`, which
+ * sync populates for essentially every message -- confirmed against real
+ * data, not assumed), not one row per raw message, matching inbox-zero's
+ * real inbox list. Each row carries the THREAD's latest message (for
+ * display) plus `messageCount`/`hasUnread` computed across every message
+ * in that thread, not just the one shown.
+ *
+ * The inner `latest` subquery intentionally does NOT apply the `beforeIso`
+ * cutoff -- it must find each thread's true globally-latest message first
+ * (Postgres `DISTINCT ON` requires the ORDER BY to start with the
+ * DISTINCT ON column), then the outer query filters by that date. Filtering
+ * inside the inner query would let a thread whose true latest message was
+ * already shown on an earlier page re-surface using an older message as if
+ * it were new, corrupting keyset pagination (skipped/duplicated threads).
+ *
+ * Keyset ("before this date") pagination -- see getInboxMessages's
+ * original write-up (now superseded by this function) for why not
+ * OFFSET-based.
  */
-export async function getInboxMessages(beforeIso?: string): Promise<ThreadListMessagePlain[]> {
-  const messages = await prisma.message.findMany({
-    where: { inInbox: true, ...(beforeIso ? { date: { lt: new Date(beforeIso) } } : {}) },
-    orderBy: { date: "desc" },
-    take: INBOX_PAGE_SIZE,
-    select: {
-      id: true,
-      subject: true,
-      fromAddress: true,
-      fromName: true,
-      date: true,
-      labels: true,
-      flags: true,
-      bodyText: true,
-      bodyFetchedAt: true,
-    },
-  });
+export async function getInboxThreads(beforeIso?: string): Promise<ThreadListMessagePlain[]> {
+  const cutoff = beforeIso ? new Date(beforeIso) : null;
 
-  return messages.map((message) => ({
-    id: message.id,
-    subject: message.subject,
-    fromAddress: message.fromAddress,
-    fromName: message.fromName,
-    dateIso: message.date.toISOString(),
-    labels: message.labels,
-    flags: message.flags,
-    snippet: message.bodyText ? message.bodyText.replace(/\s+/g, " ").trim().slice(0, 160) : null,
-    bodyFetched: message.bodyFetchedAt !== null,
+  const rows = await prisma.$queryRaw<ThreadRowRaw[]>`
+    WITH latest AS (
+      SELECT DISTINCT ON ("gmailThreadId")
+        id, "gmailThreadId", subject, "fromAddress", "fromName", date, labels, flags, "bodyText", "bodyFetchedAt"
+      FROM "Message"
+      WHERE "inInbox" = true
+      ORDER BY "gmailThreadId", date DESC
+    ),
+    stats AS (
+      SELECT "gmailThreadId", COUNT(*) AS "messageCount", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
+      FROM "Message"
+      WHERE "inInbox" = true
+      GROUP BY "gmailThreadId"
+    )
+    SELECT latest.*, stats."messageCount", stats."hasUnread"
+    FROM latest
+    JOIN stats ON stats."gmailThreadId" = latest."gmailThreadId"
+    WHERE (${cutoff}::timestamp IS NULL OR latest.date < ${cutoff}::timestamp)
+    ORDER BY latest.date DESC
+    LIMIT ${INBOX_PAGE_SIZE}
+  `;
+
+  return rows.map((row) => ({
+    id: row.id,
+    gmailThreadId: row.gmailThreadId,
+    subject: row.subject,
+    fromAddress: row.fromAddress,
+    fromName: row.fromName,
+    dateIso: row.date.toISOString(),
+    labels: row.labels,
+    flags: row.flags,
+    snippet: row.bodyText ? row.bodyText.replace(/\s+/g, " ").trim().slice(0, 160) : null,
+    bodyFetched: row.bodyFetchedAt !== null,
+    messageCount: Number(row.messageCount),
+    hasUnread: row.hasUnread,
   }));
 }
 

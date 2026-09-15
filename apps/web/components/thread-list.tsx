@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Archive, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { archiveMessages, fetchMissingSnippets, getInboxMessages, type ThreadListMessagePlain } from "@/app/mail-actions";
+import { archiveThreads, fetchMissingSnippets, getInboxThreads, type ThreadListMessagePlain } from "@/app/mail-actions";
 
 export type ThreadListMessage = ThreadListMessagePlain;
 
@@ -31,6 +31,11 @@ function formatRelativeDate(iso: string): string {
     return date.toLocaleDateString(undefined, { weekday: "short" });
   }
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Row selection/archive keys off the thread, not the individual displayed message -- see archiveThreads. */
+function threadKey(message: ThreadListMessage): string {
+  return message.gmailThreadId ?? message.id;
 }
 
 export function ThreadList({
@@ -74,38 +79,38 @@ export function ThreadList({
   }, [messages]);
 
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(localMessages.map((m) => m.id)));
+    setSelected(allSelected ? new Set() : new Set(localMessages.map(threadKey)));
   }
 
-  function toggleOne(id: string) {
+  function toggleOne(key: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
-  function archiveIds(ids: string[]) {
+  function archiveKeys(keys: string[]) {
     startTransition(async () => {
-      await archiveMessages(ids);
-      setLocalMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+      await archiveThreads(keys);
+      setLocalMessages((prev) => prev.filter((m) => !keys.includes(threadKey(m))));
       setSelected((prev) => {
         const next = new Set(prev);
-        ids.forEach((id) => next.delete(id));
+        keys.forEach((key) => next.delete(key));
         return next;
       });
     });
   }
 
-  const selectedIds = useMemo(() => Array.from(selected), [selected]);
+  const selectedKeys = useMemo(() => Array.from(selected), [selected]);
 
   async function loadMore() {
     if (localMessages.length === 0) return;
     setIsLoadingMore(true);
     try {
       const oldestDateIso = localMessages[localMessages.length - 1].dateIso;
-      const next = await getInboxMessages(oldestDateIso);
+      const next = await getInboxThreads(oldestDateIso);
       setLocalMessages((prev) => [...prev, ...next]);
       setHasMore(next.length === pageSize);
     } finally {
@@ -120,31 +125,32 @@ export function ThreadList({
         {someSelected ? (
           <>
             <span className="text-sm text-muted-foreground">{selected.size} selected</span>
-            <Button size="sm" variant="outline" disabled={isPending} onClick={() => archiveIds(selectedIds)}>
+            <Button size="sm" variant="outline" disabled={isPending} onClick={() => archiveKeys(selectedKeys)}>
               {isPending ? <Loader2 className="animate-spin" /> : <Archive />}
               Archive
             </Button>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">{localMessages.length.toLocaleString("en-US")} messages</span>
+          <span className="text-sm text-muted-foreground">{localMessages.length.toLocaleString("en-US")} threads</span>
         )}
       </div>
 
       <ul>
         {localMessages.map((message) => {
-          const isUnread = !message.flags.includes("\\Seen");
+          const key = threadKey(message);
+          const isUnread = message.hasUnread;
           const displayName = message.fromName || message.fromAddress || "Unknown";
           const visibleLabels = message.labels.filter((label) => !label.startsWith("\\"));
 
           return (
             <li
-              key={message.id}
+              key={key}
               className={cn(
                 "group flex items-center gap-3 border-b px-3 py-2.5 last:border-b-0 hover:bg-muted/40",
                 isUnread && "bg-background font-medium",
               )}
             >
-              <Checkbox checked={selected.has(message.id)} onCheckedChange={() => toggleOne(message.id)} aria-label="Select message" />
+              <Checkbox checked={selected.has(key)} onCheckedChange={() => toggleOne(key)} aria-label="Select thread" />
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarFallback className="text-xs">{initials(message.fromName, message.fromAddress)}</AvatarFallback>
               </Avatar>
@@ -153,6 +159,11 @@ export function ThreadList({
                 {message.subject || "(no subject)"}
                 {message.snippet && <span className="font-normal text-muted-foreground"> — {message.snippet}</span>}
               </span>
+              {message.messageCount > 1 && (
+                <Badge variant="outline" className="shrink-0 font-normal">
+                  {message.messageCount}
+                </Badge>
+              )}
               <div className="hidden shrink-0 gap-1 sm:flex">
                 {visibleLabels.slice(0, 2).map((label) => (
                   <Badge key={label} variant="secondary" className="font-normal">
@@ -168,7 +179,7 @@ export function ThreadList({
                 variant="ghost"
                 className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
                 disabled={isPending}
-                onClick={() => archiveIds([message.id])}
+                onClick={() => archiveKeys([key])}
                 aria-label="Archive"
               >
                 <Archive className="h-3.5 w-3.5" />
@@ -185,7 +196,7 @@ export function ThreadList({
       {localMessages.length > 0 && (
         <div className="flex flex-col items-center gap-2 border-t px-3 py-3">
           <span className="text-xs text-muted-foreground">
-            Showing {localMessages.length.toLocaleString("en-US")} of {totalCount.toLocaleString("en-US")} in your inbox
+            Showing {localMessages.length.toLocaleString("en-US")} of {totalCount.toLocaleString("en-US")} threads
           </span>
           {hasMore && (
             <Button size="sm" variant="outline" disabled={isLoadingMore} onClick={loadMore}>
