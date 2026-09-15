@@ -1,18 +1,22 @@
+import { prisma } from "@imap-ai/core/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getVolumeOverTime, getTopSenders, getRuleStats, getCategoryBreakdown } from "./queries";
+import { getVolumeOverTime, getTopSenders, getRuleStats, getCategoryBreakdown, getSenderCategories } from "./queries";
 import { VolumeChart } from "./VolumeChart";
 import { TopSendersChart } from "./TopSendersChart";
 import { RuleStatsChart } from "./RuleStatsChart";
 import { CategoryChart } from "./CategoryChart";
+import { SenderCategoryTable } from "./SenderCategoryTable";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
-  const [volume, topSenders, ruleStats, categories] = await Promise.all([
+  const account = await prisma.account.findFirstOrThrow();
+  const [volume, topSenders, ruleStats, categories, senderCategories] = await Promise.all([
     getVolumeOverTime(),
     getTopSenders(10),
     getRuleStats(),
-    getCategoryBreakdown(),
+    getCategoryBreakdown(account.id),
+    getSenderCategories(account.id),
   ]);
 
   return (
@@ -62,6 +66,19 @@ export default async function StatsPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sender categories (hand-correct)</CardTitle>
+            <CardDescription>
+              Fix a wrong guess by picking a different category -- it sticks, overriding the heuristic for that sender
+              going forward.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SenderCategoryTable rows={senderCategories} />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

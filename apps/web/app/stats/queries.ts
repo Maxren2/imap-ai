@@ -89,22 +89,16 @@ export interface CategoryBreakdownRow {
   messageCount: number;
 }
 
-/**
- * Sender-category breakdown via the static heuristic in
- * lib/analytics/categorize-sender.ts, applied over the same top-300
- * senders-by-volume window used by Bulk Unsubscribe -- a full-mailbox
- * pass isn't needed for a breakdown chart, and keeps this query cheap.
- */
-export async function getCategoryBreakdown(): Promise<CategoryBreakdownRow[]> {
-  const rows = await prisma.$queryRaw<
-    {
-      fromAddress: string;
-      fromName: string | null;
-      lastSubject: string | null;
-      messageCount: bigint;
-      hasUnsubscribe: boolean;
-    }[]
-  >`
+interface SenderAggRow {
+  fromAddress: string;
+  fromName: string | null;
+  lastSubject: string | null;
+  messageCount: bigint;
+  hasUnsubscribe: boolean;
+}
+
+async function getSenderAggRows(): Promise<SenderAggRow[]> {
+  return prisma.$queryRaw<SenderAggRow[]>`
     SELECT
       "fromAddress",
       (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
@@ -117,22 +111,91 @@ export async function getCategoryBreakdown(): Promise<CategoryBreakdownRow[]> {
     ORDER BY "messageCount" DESC
     LIMIT 300
   `;
+}
+
+/** A manual override (see /stats' hand-correction UI) always wins over the heuristic guess. */
+function isSenderCategory(value: string): value is SenderCategory {
+  return (SENDER_CATEGORIES as string[]).includes(value);
+}
+
+async function getOverridesMap(accountId: string): Promise<Map<string, SenderCategory>> {
+  const overrides = await prisma.senderCategoryOverride.findMany({
+    where: { accountId },
+    select: { senderAddress: true, category: true },
+  });
+  const map = new Map<string, SenderCategory>();
+  for (const override of overrides) {
+    if (isSenderCategory(override.category)) map.set(override.senderAddress, override.category);
+  }
+  return map;
+}
+
+/**
+ * Sender-category breakdown via the static heuristic in
+ * lib/analytics/categorize-sender.ts (overridden per-sender where the user
+ * has hand-corrected one), applied over the same top-300 senders-by-volume
+ * window used by Bulk Unsubscribe -- a full-mailbox pass isn't needed for a
+ * breakdown chart, and keeps this query cheap.
+ */
+export async function getCategoryBreakdown(accountId: string): Promise<CategoryBreakdownRow[]> {
+  const [rows, overrides] = await Promise.all([getSenderAggRows(), getOverridesMap(accountId)]);
 
   const totals = new Map<SenderCategory, { senderCount: number; messageCount: number }>(
     SENDER_CATEGORIES.map((category) => [category, { senderCount: 0, messageCount: 0 }]),
   );
 
   for (const row of rows) {
-    const category = categorizeSender({
-      fromAddress: row.fromAddress,
-      fromName: row.fromName,
-      lastSubject: row.lastSubject,
-      hasUnsubscribe: row.hasUnsubscribe,
-    });
+    const category =
+      overrides.get(row.fromAddress) ??
+      categorizeSender({
+        fromAddress: row.fromAddress,
+        fromName: row.fromName,
+        lastSubject: row.lastSubject,
+        hasUnsubscribe: row.hasUnsubscribe,
+      });
     const bucket = totals.get(category)!;
     bucket.senderCount += 1;
     bucket.messageCount += Number(row.messageCount);
   }
 
   return SENDER_CATEGORIES.map((category) => ({ category, ...totals.get(category)! }));
+}
+
+export interface SenderCategoryRow {
+  fromAddress: string;
+  fromName: string | null;
+  messageCount: number;
+  category: SenderCategory;
+  isOverridden: boolean;
+}
+
+/**
+ * Same top-300 senders as the breakdown above, but as individual rows for
+ * the hand-correction table -- each carries its current *effective*
+ * category (override if set, else the heuristic guess) and whether that's
+ * a manual override, so the UI can show the dropdown pre-selected
+ * correctly and distinguish "someone corrected this" from "heuristic
+ * guess" at a glance.
+ */
+export async function getSenderCategories(accountId: string, limit = 50): Promise<SenderCategoryRow[]> {
+  const [rows, overrides] = await Promise.all([getSenderAggRows(), getOverridesMap(accountId)]);
+
+  return rows.slice(0, limit).map((row) => {
+    const override = overrides.get(row.fromAddress);
+    const category =
+      override ??
+      categorizeSender({
+        fromAddress: row.fromAddress,
+        fromName: row.fromName,
+        lastSubject: row.lastSubject,
+        hasUnsubscribe: row.hasUnsubscribe,
+      });
+    return {
+      fromAddress: row.fromAddress,
+      fromName: row.fromName,
+      messageCount: Number(row.messageCount),
+      category,
+      isOverridden: override !== undefined,
+    };
+  });
 }

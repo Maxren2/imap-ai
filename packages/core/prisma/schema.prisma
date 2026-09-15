@@ -19,6 +19,7 @@ model Account {
   coldEmailExceptions ColdEmailException[]
   backgroundRuns BackgroundRun[]
   chats     Chat[]
+  senderCategoryOverrides SenderCategoryOverride[]
 }
 
 // Tracks a detached background process spawned from the web UI (currently
@@ -159,6 +160,25 @@ model SenderStatus {
   // code) rather than a Prisma enum, so adding a status later doesn't need
   // a migration.
   status        String   @default("unhandled")
+  updatedAt     DateTime @updatedAt
+
+  @@unique([accountId, senderAddress])
+}
+
+// A user-set override for a sender's Analytics category (Newsletter/
+// Marketing/Receipt/Notification/Other), for the hand-correction UI on
+// /stats -- the heuristic in lib/analytics/categorize-sender.ts is a
+// static guess and gets some senders wrong (documented known gap: non-
+// English patterns), so a manual correction has to persist somewhere the
+// heuristic itself can't (it's stateless, recomputed fresh every page
+// load). Same small-dedicated-table pattern as SenderStatus/
+// ColdEmailException above rather than a generic per-sender metadata blob.
+model SenderCategoryOverride {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  senderAddress String
+  category      String
   updatedAt     DateTime @updatedAt
 
   @@unique([accountId, senderAddress])
