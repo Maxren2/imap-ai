@@ -66,9 +66,9 @@ export function SenderTable({ senders }: { senders: SenderRow[] }) {
                   <div className="font-medium">{sender.fromName || sender.fromAddress}</div>
                   <div className="text-xs text-muted-foreground">{sender.fromAddress}</div>
                 </TableCell>
-                <TableCell className="text-right">{sender.messageCount.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{sender.unreadCount.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{sender.inboxCount.toLocaleString()}</TableCell>
+                <TableCell className="text-right">{sender.messageCount.toLocaleString("en-US")}</TableCell>
+                <TableCell className="text-right">{sender.unreadCount.toLocaleString("en-US")}</TableCell>
+                <TableCell className="text-right">{sender.inboxCount.toLocaleString("en-US")}</TableCell>
                 <TableCell>
                   {sender.listUnsubscribeOneClick ? (
                     <Badge variant="secondary" className="font-normal">

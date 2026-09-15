@@ -67,7 +67,7 @@ export function SenderArchiveTable({ senders }: { senders: ArchiveCandidateRow[]
             </Button>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">{rows.length.toLocaleString()} senders</span>
+          <span className="text-sm text-muted-foreground">{rows.length.toLocaleString("en-US")} senders</span>
         )}
       </div>
 
@@ -96,11 +96,11 @@ export function SenderArchiveTable({ senders }: { senders: ArchiveCandidateRow[]
                 <div className="font-medium">{sender.fromName || sender.fromAddress}</div>
                 <div className="text-xs text-muted-foreground">{sender.fromAddress}</div>
               </TableCell>
-              <TableCell className="text-right">{sender.inboxCount.toLocaleString()}</TableCell>
+              <TableCell className="text-right">{sender.inboxCount.toLocaleString("en-US")}</TableCell>
               <TableCell className="text-right">
                 {sender.unreadCount > 0 ? (
                   <Badge variant="secondary" className="font-normal">
-                    {sender.unreadCount.toLocaleString()}
+                    {sender.unreadCount.toLocaleString("en-US")}
                   </Badge>
                 ) : (
                   <span className="text-muted-foreground">0</span>

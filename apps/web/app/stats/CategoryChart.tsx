@@ -21,7 +21,7 @@ export function CategoryChart({ rows }: { rows: CategoryBreakdownRow[] }) {
               hideLabel
               formatter={(value, _name, item) => (
                 <span>
-                  {String(value)} senders, {item.payload.messageCount.toLocaleString()} messages
+                  {String(value)} senders, {item.payload.messageCount.toLocaleString("en-US")} messages
                 </span>
               )}
             />
