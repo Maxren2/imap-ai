@@ -155,16 +155,19 @@ export function ThreadList({
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarFallback className="text-xs">{initials(message.fromName, message.fromAddress)}</AvatarFallback>
               </Avatar>
-              <span className="w-36 shrink-0 truncate text-sm">{displayName}</span>
+              <span className="flex w-36 shrink-0 items-baseline gap-1 truncate text-sm">
+                <span className="truncate">{displayName}</span>
+                {/* Inline count after the name, matching inbox-zero's real
+                    rendering ("Google 2") confirmed live -- not a separate
+                    badge off to the side. */}
+                {message.messageCount > 1 && (
+                  <span className="shrink-0 text-xs font-normal text-muted-foreground">{message.messageCount}</span>
+                )}
+              </span>
               <span className={cn("min-w-0 flex-1 truncate text-sm", !isUnread && "text-muted-foreground")}>
                 {message.subject || "(no subject)"}
                 {message.snippet && <span className="font-normal text-muted-foreground"> — {message.snippet}</span>}
               </span>
-              {message.messageCount > 1 && (
-                <Badge variant="outline" className="shrink-0 font-normal">
-                  {message.messageCount}
-                </Badge>
-              )}
               <div className="hidden shrink-0 gap-1 sm:flex">
                 {visibleLabels.slice(0, 2).map((label) => (
                   <Badge key={label} variant="secondary" className="font-normal">
