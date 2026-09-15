@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata = {
   title: "imap-ai",
@@ -7,7 +8,14 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: "2rem" }}>{children}</body>
+      <body>
+        <nav className="nav">
+          <span className="nav-brand">imap-ai</span>
+          <a href="/">Home</a>
+          <a href="/rules">Rules</a>
+        </nav>
+        {children}
+      </body>
     </html>
   );
 }

@@ -8,7 +8,7 @@ type RecentMessage = Prisma.MessageGetPayload<{
 }>;
 
 export default async function HomePage() {
-  const [account, messageCount, recentMessages, rules, inbox] = await Promise.all([
+  const [account, messageCount, recentMessages, inbox] = await Promise.all([
     prisma.account.findFirst(),
     prisma.message.count(),
     prisma.message.findMany({
@@ -16,18 +16,14 @@ export default async function HomePage() {
       take: 20,
       select: { id: true, subject: true, fromAddress: true, fromName: true, date: true, labels: true },
     }),
-    prisma.rule.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { matches: true } } },
-    }),
     prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
   ]);
 
   return (
     <main>
-      <h1>imap-ai</h1>
+      <h1>Inbox</h1>
       {account ? (
-        <p>
+        <p className="subtle">
           Account: <strong>{account.email}</strong> &middot; {messageCount.toLocaleString()} messages mirrored
           {inbox && !inbox.fullyBackfilled && (
             <>
@@ -37,39 +33,17 @@ export default async function HomePage() {
           )}
         </p>
       ) : (
-        <p>No account synced yet. Run `npm run sync` from the repo root first.</p>
+        <p className="subtle">No account synced yet. Run `npm run sync` from the repo root first.</p>
       )}
 
-      <h2>Rules</h2>
-      {rules.length === 0 ? (
-        <p>No rules yet. Run `npm run rules:seed-example` for a couple of examples, then `npm run rules:run`.</p>
-      ) : (
-        <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%", marginBottom: "1.5rem" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Enabled</th>
-              <th>Matches</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rules.map((rule) => (
-              <tr key={rule.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{rule.name}</td>
-                <td>{rule.aiPrompt ? (rule.conditions ? "rules + AI" : "AI") : "rules"}</td>
-                <td>{rule.enabled ? "yes" : "no"}</td>
-                <td>{rule._count.matches.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <p>
+        Manage matching rules and actions on <a href="/rules">the Rules page</a>.
+      </p>
 
       <h2>Recent messages</h2>
-      <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+          <tr>
             <th>Date</th>
             <th>From</th>
             <th>Subject</th>
@@ -78,7 +52,7 @@ export default async function HomePage() {
         </thead>
         <tbody>
           {recentMessages.map((message: RecentMessage) => (
-            <tr key={message.id} style={{ borderBottom: "1px solid #eee" }}>
+            <tr key={message.id}>
               <td>{message.date.toISOString().slice(0, 16).replace("T", " ")}</td>
               <td>{message.fromName || message.fromAddress || "—"}</td>
               <td>{message.subject || "(no subject)"}</td>

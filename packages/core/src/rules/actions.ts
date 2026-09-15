@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ImapFlow } from "imapflow";
-import { resolveOrCreateLabel } from "../labels.js";
-import { findSpecialUseMailbox } from "../special-use.js";
+import { resolveOrCreateLabel } from "../labels";
+import { findSpecialUseMailbox } from "../special-use";
 
 // Deliberately a small subset of inbox-zero's action types (LABEL, ARCHIVE,
 // REPLY, FORWARD, DRAFT_EMAIL, MARK_SPAM, DELETE, ...) -- these four are
