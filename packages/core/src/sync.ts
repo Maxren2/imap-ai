@@ -1,33 +1,7 @@
 import "./env.js";
-import { ImapFlow } from "imapflow";
-import { getGmailAccessToken } from "./gmail-oauth.js";
+import { connectImap, requireEnv } from "./imap-connect.js";
 import { ensureAccount, syncOpenedMailbox, resolveBackfillSince } from "./mailbox-sync.js";
 import { prisma } from "./db.js";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
-
-async function connectImap(gmailAddress: string): Promise<ImapFlow> {
-  const accessToken = await getGmailAccessToken({
-    clientId: requireEnv("GOOGLE_CLIENT_ID"),
-    clientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
-    refreshToken: requireEnv("GOOGLE_REFRESH_TOKEN"),
-  });
-
-  const client = new ImapFlow({
-    host: "imap.gmail.com",
-    port: 993,
-    secure: true,
-    auth: { user: gmailAddress, accessToken },
-    logger: false,
-  });
-
-  await client.connect();
-  return client;
-}
 
 async function main() {
   const gmailAddress = requireEnv("GMAIL_ADDRESS");

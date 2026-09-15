@@ -10,11 +10,14 @@ export function resolveOllamaConfig(): OllamaConfig | undefined {
   return { baseUrl: baseUrl.replace(/\/$/, ""), model };
 }
 
+const MAX_BODY_CHARS_IN_PROMPT = 3000;
+
 export interface AiMatchInput {
   prompt: string;
   subject: string | null;
   fromAddress: string | null;
   fromName: string | null;
+  body: string | null;
 }
 
 interface OllamaChatResponse {
@@ -48,6 +51,7 @@ export async function evaluateAiPrompt(config: OllamaConfig, input: AiMatchInput
             "",
             `From: ${input.fromName ? `${input.fromName} <${input.fromAddress ?? ""}>` : (input.fromAddress ?? "(unknown)")}`,
             `Subject: ${input.subject ?? "(no subject)"}`,
+            `Body: ${input.body ? input.body.slice(0, MAX_BODY_CHARS_IN_PROMPT) : "(no body available)"}`,
             "",
             "Does this email match the rule? Answer yes or no.",
           ].join("\n"),

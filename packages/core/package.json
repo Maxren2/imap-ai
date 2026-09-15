@@ -31,10 +31,12 @@
     "dotenv": "^16.4.5",
     "google-auth-library": "^9.14.1",
     "imapflow": "^1.0.171",
+    "mailparser": "^3.7.1",
     "nodemailer": "^10.0.10",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.4",
     "@types/node": "^22.7.4",
     "dotenv-cli": "^7.4.2",
     "prisma": "^5.20.0",

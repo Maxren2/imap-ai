@@ -1,14 +1,7 @@
 import "./env.js";
-import { ImapFlow } from "imapflow";
-import { getGmailAccessToken } from "./gmail-oauth.js";
+import { connectImap, requireEnv } from "./imap-connect.js";
 import { ensureAccount, syncOpenedMailbox, resolveBackfillSince } from "./mailbox-sync.js";
 import { prisma } from "./db.js";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 // imapflow's idle() promise only resolves on its own periodic renewal timer
 // (maxIdleTime), not on individual server pushes -- an untagged EXISTS
@@ -17,30 +10,10 @@ function requireEnv(name: string): string {
 // the idle() loop is just a keepalive that also gives shutdown a checkpoint.
 const MAX_IDLE_MS = 60_000;
 
-async function connectImap(gmailAddress: string): Promise<ImapFlow> {
-  const accessToken = await getGmailAccessToken({
-    clientId: requireEnv("GOOGLE_CLIENT_ID"),
-    clientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
-    refreshToken: requireEnv("GOOGLE_REFRESH_TOKEN"),
-  });
-
-  const client = new ImapFlow({
-    host: "imap.gmail.com",
-    port: 993,
-    secure: true,
-    auth: { user: gmailAddress, accessToken },
-    maxIdleTime: MAX_IDLE_MS,
-    logger: false,
-  });
-
-  await client.connect();
-  return client;
-}
-
 async function main() {
   const gmailAddress = requireEnv("GMAIL_ADDRESS");
   const mailboxName = "INBOX";
-  const client = await connectImap(gmailAddress);
+  const client = await connectImap(gmailAddress, { maxIdleTime: MAX_IDLE_MS });
 
   let shuttingDown = false;
   const shutdown = () => {

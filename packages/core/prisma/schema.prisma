@@ -48,6 +48,11 @@ model Message {
   date           DateTime
   flags          String[]
   labels         String[]
+  // Lazily fetched -- null/unset until something actually needs body
+  // content (an AI rule prompt, e.g.). bodyFetchedAt is set even on a
+  // fetch that finds no text part, so we don't keep retrying it forever.
+  bodyText       String?
+  bodyFetchedAt  DateTime?
   createdAt      DateTime    @default(now())
   ruleMatches    RuleMatch[]
 

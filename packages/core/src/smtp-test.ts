@@ -1,13 +1,6 @@
 import "./env.js";
-import { ImapFlow } from "imapflow";
-import { getGmailAccessToken } from "./gmail-oauth.js";
+import { connectImap, requireEnv } from "./imap-connect.js";
 import { createSmtpTransport, sendAndSaveToSent } from "./smtp.js";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 async function main() {
   const gmailAddress = requireEnv("GMAIL_ADDRESS");
@@ -16,16 +9,7 @@ async function main() {
   const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN");
 
   const transport = createSmtpTransport({ user: gmailAddress, clientId, clientSecret, refreshToken });
-
-  const accessToken = await getGmailAccessToken({ clientId, clientSecret, refreshToken });
-  const imapClient = new ImapFlow({
-    host: "imap.gmail.com",
-    port: 993,
-    secure: true,
-    auth: { user: gmailAddress, accessToken },
-    logger: false,
-  });
-  await imapClient.connect();
+  const imapClient = await connectImap(gmailAddress);
 
   try {
     const { messageId } = await sendAndSaveToSent(transport, imapClient, gmailAddress, {
