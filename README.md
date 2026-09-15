@@ -17,11 +17,12 @@ Early stage, building up from the riskiest parts of the design first:
 3. **Real-time watcher** (`npm run watch`) — does a catch-up sync, then holds an IMAP IDLE connection open and re-syncs whenever new mail arrives. Verified against a real Gmail account: appending a message while the watcher was idling triggered a sync within seconds.
 4. **SMTP send** (`npm run smtp-test`) — sends via SMTP (XOAUTH2) and appends the same raw message to the account's Sent folder over IMAP, since plain SMTP doesn't save a sent copy. The Sent folder is located via the SPECIAL-USE extension rather than a guessed path -- confirmed necessary in testing, since this account's Sent folder is actually `[Gmail]/Gesendet` (German locale), not the commonly-assumed `[Gmail]/Sent Mail`.
 
-5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. First page lists the account and recent synced messages. Verified running against real data.
+5. **Web app** (`npm run dev`, then http://localhost:3000) — a Next.js app reading live from the same Postgres mirror. Lists the account, rules with live match counts, and recent synced messages.
+6. **Rules engine** (`npm run rules:run`) — evaluates enabled rules (AND-combined conditions on sender/subject/labels, stored as JSON) against the local mirror and records matches, idempotently. No AI matching or actions (label/archive/reply) yet — this is match-detection only, reading purely from Postgres, no IMAP/API calls per evaluation. `npm run rules:seed-example` creates two example rules to try it against real synced mail.
 
-All five verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
+All six verified end-to-end against a real Gmail account and a real local Postgres instance, not just typechecked.
 
-Not yet built: the rules/AI-matching engine. See [DESIGN.md](DESIGN.md) for the full plan.
+Not yet built: AI-based rule matching, and executing actions (label/archive/draft-reply) for a match. See [DESIGN.md](DESIGN.md) for the full plan.
 
 ## Structure
 
@@ -61,6 +62,8 @@ npm run sync         # one-shot incremental sync of INBOX metadata into Postgres
 npm run watch         # catches up, then stays connected and syncs new mail as it arrives (Ctrl+C to stop)
 npm run smtp-test     # sends a self-addressed test email and appends it to the Sent folder
 npm run dev            # starts the Next.js app at http://localhost:3000
+npm run rules:seed-example  # creates two example rules against the synced account
+npm run rules:run           # evaluates enabled rules against the local mirror
 ```
 
 Both `sync` and `watch` are safe to re-run — they only fetch UIDs newer than the last one seen per mailbox, and reset the cursor automatically if the server's UIDVALIDITY changes.

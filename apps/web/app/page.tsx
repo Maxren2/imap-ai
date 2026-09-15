@@ -8,13 +8,17 @@ type RecentMessage = Prisma.MessageGetPayload<{
 }>;
 
 export default async function HomePage() {
-  const [account, messageCount, recentMessages] = await Promise.all([
+  const [account, messageCount, recentMessages, rules] = await Promise.all([
     prisma.account.findFirst(),
     prisma.message.count(),
     prisma.message.findMany({
       orderBy: { date: "desc" },
       take: 20,
       select: { id: true, subject: true, fromAddress: true, fromName: true, date: true, labels: true },
+    }),
+    prisma.rule.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { matches: true } } },
     }),
   ]);
 
@@ -27,6 +31,30 @@ export default async function HomePage() {
         </p>
       ) : (
         <p>No account synced yet. Run `npm run sync` from the repo root first.</p>
+      )}
+
+      <h2>Rules</h2>
+      {rules.length === 0 ? (
+        <p>No rules yet. Run `npm run rules:seed-example` for a couple of examples, then `npm run rules:run`.</p>
+      ) : (
+        <table cellPadding={6} style={{ borderCollapse: "collapse", width: "100%", marginBottom: "1.5rem" }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+              <th>Name</th>
+              <th>Enabled</th>
+              <th>Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.id} style={{ borderBottom: "1px solid #eee" }}>
+                <td>{rule.name}</td>
+                <td>{rule.enabled ? "yes" : "no"}</td>
+                <td>{rule._count.matches.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
 
       <h2>Recent messages</h2>

@@ -14,6 +14,7 @@ model Account {
   provider  String
   createdAt DateTime  @default(now())
   mailboxes Mailbox[]
+  rules     Rule[]
 }
 
 model Mailbox {
@@ -30,9 +31,9 @@ model Mailbox {
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   mailboxId      String
-  mailbox        Mailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  mailbox        Mailbox     @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   uid            Int
   gmailThreadId  String?
   gmailMessageId String?
@@ -42,8 +43,38 @@ model Message {
   date           DateTime
   flags          String[]
   labels         String[]
-  createdAt      DateTime @default(now())
+  createdAt      DateTime    @default(now())
+  ruleMatches    RuleMatch[]
 
   @@unique([mailboxId, uid])
   @@index([gmailThreadId])
+}
+
+model Rule {
+  id         String      @id @default(cuid())
+  accountId  String
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name       String
+  enabled    Boolean     @default(true)
+  // RuleCondition[] (see packages/core/src/rules/types.ts) -- ALL conditions
+  // must match (AND) for v1. Stored as JSON rather than normalized rows
+  // since there's no UI yet to justify the extra join complexity.
+  conditions Json
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  matches    RuleMatch[]
+
+  @@unique([accountId, name])
+}
+
+model RuleMatch {
+  id        String   @id @default(cuid())
+  ruleId    String
+  rule      Rule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  matchedAt DateTime @default(now())
+
+  @@unique([ruleId, messageId])
+  @@index([messageId])
 }

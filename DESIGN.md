@@ -60,7 +60,14 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 3. **Code reuse**: rebuild fresh rather than port inbox-zero's rules/AI-matching code — inbox-zero's logic assumes its own API-based data model and Prisma schema, which don't match this project's local-mirror shape closely enough to be a clean port. Reference its approach conceptually where useful, but write new code against this schema.
 4. **MVP scope**: single Gmail account, read + rule-match + send, no multi-account/multi-provider yet. Confirmed.
 
-Next build step: the rules/AI-matching engine (not started), operating against the local Postgres mirror rather than live IMAP/API calls.
+## 7. Rules engine (v1, deterministic matching only)
+
+- `Rule` model: `conditions` stored as JSON (array of `{field, operator, value}`, validated with zod), all conditions AND-combined -- no OR/grouping yet. Fields: `fromAddress`, `fromName`, `subject`, `labels`. Operators: `contains`, `equals`, `startsWith` (labels always does an exact-match-against-any-label check regardless of operator, since Gmail labels are discrete strings, not free text).
+- `RuleMatch` records which rule matched which message, unique per (rule, message) so `npm run rules:run` is idempotent and cheap to re-run after every sync.
+- Runs entirely against the local Postgres mirror -- no IMAP or API calls during evaluation, which is what actually eliminates the hidden per-match cost problem from the original inbox-zero design (see [[feedback-gmail-hidden-quota-costs]] in project memory): matching 11,000+ real messages against two rules took well under a second.
+- Verified against real synced mail: a "sender contains notifications@github.com" rule and a "has \Sent label" rule both produced correct, spot-checked matches.
+
+**Deliberately not built yet**: AI-based/natural-language rule matching (the actual differentiator vs. simple filters), and executing any action on a match (label, archive, draft a reply). This slice is match-detection only.
 
 ## 6. Risks
 
