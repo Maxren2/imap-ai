@@ -17,7 +17,30 @@ model Account {
   rules     Rule[]
   senderStatuses SenderStatus[]
   coldEmailExceptions ColdEmailException[]
+  backgroundRuns BackgroundRun[]
   chat      Chat?
+}
+
+// Tracks a detached background process spawned from the web UI (currently
+// rules:run / rules:apply-actions) so the UI can show live status/output
+// instead of "refresh the page after a bit and hope" -- the process
+// previously ran with stdio fully discarded. `log` is the accumulated
+// stdout+stderr text, overwritten (not appended) on each flush from the
+// spawning server action -- simpler than real append-only storage for the
+// modest output volume these scripts produce, and avoids any read-modify-
+// write race since only the one spawning process ever writes a given row.
+model BackgroundRun {
+  id         String    @id @default(cuid())
+  accountId  String
+  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // "rules:run" | "rules:apply-actions" -- a plain string (validated in
+  // code), not a Prisma enum, same reasoning as SenderStatus.status.
+  kind       String
+  // "running" | "succeeded" | "failed"
+  status     String    @default("running")
+  log        String    @default("")
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
 }
 
 // Single persistent chat thread per account for v1 -- no multi-thread

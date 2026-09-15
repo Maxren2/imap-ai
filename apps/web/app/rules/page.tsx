@@ -1,18 +1,22 @@
 import { prisma } from "@imap-ai/core/db";
-import { deleteRule, toggleRule, triggerRulesRun, triggerApplyActions } from "./actions";
+import { deleteRule, toggleRule, triggerRulesRun, triggerApplyActions, getLatestBackgroundRuns } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { BackgroundRunsPanel } from "./BackgroundRunsPanel";
 import Link from "next/link";
 import { Plus, Play, Zap } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function RulesPage() {
-  const rules = await prisma.rule.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { matches: true } } },
-  });
+  const [rules, backgroundRuns] = await Promise.all([
+    prisma.rule.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { matches: true } } },
+    }),
+    getLatestBackgroundRuns(),
+  ]);
 
   const pendingActionCounts = await Promise.all(
     rules.map((rule) =>
@@ -47,8 +51,9 @@ export default async function RulesPage() {
         </form>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        These run in the background — refresh this page after a bit to see updated match/action counts.
+        These run in the background — live output below updates automatically while running.
       </p>
+      <BackgroundRunsPanel initialRuns={backgroundRuns} />
 
       {rules.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">
