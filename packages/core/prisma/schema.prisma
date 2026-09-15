@@ -18,7 +18,7 @@ model Account {
   senderStatuses SenderStatus[]
   coldEmailExceptions ColdEmailException[]
   backgroundRuns BackgroundRun[]
-  chat      Chat?
+  chats     Chat[]
 }
 
 // Tracks a detached background process spawned from the web UI (currently
@@ -43,15 +43,20 @@ model BackgroundRun {
   finishedAt DateTime?
 }
 
-// Single persistent chat thread per account for v1 -- no multi-thread
-// history/rename/delete yet (inbox-zero has that; deferred here for scope).
 model Chat {
   id        String        @id @default(cuid())
-  accountId String        @unique
+  accountId String
   account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // Null until the user renames the thread, or the first user message
+  // auto-titles it (see apps/web/app/api/chat/route.ts) -- inbox-zero's real
+  // chat history falls back to a date-based label in this case rather than
+  // deriving one, but a content-derived title reads better in a thread list.
+  name      String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   messages  ChatMessage[]
+
+  @@index([accountId])
 }
 
 model ChatMessage {

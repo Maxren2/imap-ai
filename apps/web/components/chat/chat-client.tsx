@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { Sparkles, Loader2 } from "lucide-react";
@@ -22,10 +23,17 @@ import { Loader } from "@/components/ai-elements/loader";
 import { Button } from "@/components/ui/button";
 import { archiveSenders } from "@/app/bulk-archive/actions";
 
-export function ChatClient({ initialMessages }: { initialMessages: UIMessage[] }) {
+export function ChatClient({ chatId, initialMessages }: { chatId: string; initialMessages: UIMessage[] }) {
+  const router = useRouter();
   const { messages, sendMessage, status } = useChat({
     messages: initialMessages,
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport: new DefaultChatTransport({ api: "/api/chat", body: { chatId } }),
+    // The sidebar (ChatSidebar, rendered by the server-component chat
+    // layout) doesn't auto-refresh when the API route auto-titles a new
+    // chat or bumps its updatedAt -- refresh here so the sidebar's title
+    // and ordering catch up once a reply actually finishes, without
+    // remounting this chat's own message state.
+    onFinish: () => router.refresh(),
   });
 
   // archiveSender is a read-only "how many messages would this affect"

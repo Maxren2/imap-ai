@@ -1,26 +1,25 @@
 import { prisma } from "@imap-ai/core/db";
-import type { UIMessage } from "ai";
-import { ChatClient } from "@/components/chat/chat-client";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChatPage() {
+/**
+ * /chat has no thread of its own -- it resolves to the most recently
+ * updated thread (or creates a fresh one if this account has none yet) and
+ * redirects there. The actual chat UI lives at /chat/[chatId].
+ */
+export default async function ChatIndexPage() {
   const account = await prisma.account.findFirst();
+  if (!account) redirect("/");
 
-  const chatMessages = account
-    ? await prisma.chat
-        .findUnique({
-          where: { accountId: account.id },
-          include: { messages: { orderBy: { createdAt: "asc" } } },
-        })
-        .then((chat) => chat?.messages ?? [])
-    : [];
+  const mostRecentChat = await prisma.chat.findFirst({
+    where: { accountId: account.id },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true },
+  });
 
-  const initialMessages: UIMessage[] = chatMessages.map((message) => ({
-    id: message.id,
-    role: message.role as UIMessage["role"],
-    parts: message.parts as unknown as UIMessage["parts"],
-  }));
+  if (mostRecentChat) redirect(`/chat/${mostRecentChat.id}`);
 
-  return <ChatClient initialMessages={initialMessages} />;
+  const chat = await prisma.chat.create({ data: { accountId: account.id } });
+  redirect(`/chat/${chat.id}`);
 }
