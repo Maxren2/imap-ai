@@ -98,7 +98,17 @@ Conclusion: this is a green-field problem worth building, not a "go use X instea
 
 **Deliberately not built yet**: an action editor beyond the fixed checkboxes/single label (no OR-conditions, no reply/forward/draft-email actions since those actions don't exist yet either), a live progress/log view for triggered runs, and a UI for the backfill-window/full-backfill feature (still CLI-only, `npm run backfill`).
 
-## 10. Risks
+## 10. Visual design: matching inbox-zero's actual UI
+
+Goal (user request): "the same GUI visually and with almost the same features as inbox-zero" -- AI assistant chat, archive, bulk unsubscribe, etc. This is a large surface (inbox-zero's own mail client has a virtualized thread list, a streaming AI chat with tool-calling, and a real RFC 8058 one-click unsubscribe flow), so it's being built in phases rather than all at once; the user chose **visual shell first**, so every feature after this looks right from the start instead of needing a re-skin later.
+
+- Researched inbox-zero's actual frontend stack from its real source (`C:\Users\Maxime\dev\inbox-zero`, `apps/web`), not from memory: **Tailwind CSS v3** + **shadcn/ui** (`components.json`, `style: "default"`, `baseColor: "slate"`, CSS-variable theming) on top of Radix primitives, `lucide-react` icons. The chat UI specifically uses Vercel's **AI Elements** kit (`@ai-elements/prompt-input`) over `@ai-sdk/react`'s `useChat` -- relevant when the chat phase starts.
+- `apps/web` now has the same stack: Tailwind v3.4.17, shadcn `components.json` (identical config values to inbox-zero's), and the shadcn CLI's own generated `components/ui/*` primitives (button, input, checkbox, table, badge, sidebar, etc.) rather than hand-rolled equivalents -- so later features can pull in more shadcn components the same way inbox-zero does, not a divergent one-off design system.
+- App shell: a collapsible sidebar (`components/app-sidebar.tsx`, using shadcn's `Sidebar`/`SidebarProvider` block) with inbox-zero's actual nav item set and icons (Inbox, Chat, Assistant, Bulk Unsubscribe, Bulk Archive, Analytics) -- items for features that don't exist yet are visibly present but disabled with a "Soon" badge, rather than omitted or dead-linked, so the target structure is visible even before each piece is built.
+- Existing pages (`/`, `/rules`, `/rules/new`, `/rules/[id]/edit`) restyled onto the new system (shadcn `Table`/`Badge`/`Button`/`Input`/`Checkbox`, Tailwind utility classes) -- functionally unchanged, verified with the same create/edit/toggle/delete round-trip as before to confirm the re-skin didn't regress anything.
+- Dark mode CSS variables exist (`.dark` class swap, matching shadcn's convention) but nothing toggles the class yet -- the app always renders light for now; wiring an actual theme toggle (e.g. `next-themes`) is left for later.
+
+## 11. Risks
 
 - Large one-time historical backfills could hit the Workspace daily bandwidth cap on very large mailboxes -- the paced, resumable `backfillOlderMessages` design (section 6) is meant to keep any single run modest regardless of total mailbox size, but a truly enormous mailbox synced in "all" mode could still take a while.
 - IMAP behavior differs meaningfully across providers (Gmail extensions are Gmail-only; other providers vary in `UIDVALIDITY` stability, folder naming, etc.) — the generic-provider path needs to degrade gracefully rather than assuming Gmail semantics everywhere.

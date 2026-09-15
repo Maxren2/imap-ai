@@ -1,5 +1,7 @@
 import { prisma } from "@imap-ai/core/db";
 import type { Prisma } from "@imap-ai/core/prisma";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
 
@@ -20,47 +22,61 @@ export default async function HomePage() {
   ]);
 
   return (
-    <main>
-      <h1>Inbox</h1>
+    <main className="mx-auto max-w-4xl px-6 py-8">
+      <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
       {account ? (
-        <p className="subtle">
-          Account: <strong>{account.email}</strong> &middot; {messageCount.toLocaleString()} messages mirrored
+        <p className="mt-1 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{account.email}</span> &middot;{" "}
+          {messageCount.toLocaleString()} messages mirrored
           {inbox && !inbox.fullyBackfilled && (
             <>
               {" "}
-              &middot; older mail not yet synced (run <code>npm run backfill</code> to fetch all of it)
+              &middot; older mail not yet synced (run <code className="rounded bg-muted px-1 py-0.5">npm run backfill</code>)
             </>
           )}
         </p>
       ) : (
-        <p className="subtle">No account synced yet. Run `npm run sync` from the repo root first.</p>
+        <p className="mt-1 text-sm text-muted-foreground">No account synced yet. Run `npm run sync` from the repo root first.</p>
       )}
 
-      <p>
-        Manage matching rules and actions on <a href="/rules">the Rules page</a>.
-      </p>
-
-      <h2>Recent messages</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>From</th>
-            <th>Subject</th>
-            <th>Labels</th>
-          </tr>
-        </thead>
-        <tbody>
-          {recentMessages.map((message: RecentMessage) => (
-            <tr key={message.id}>
-              <td>{message.date.toISOString().slice(0, 16).replace("T", " ")}</td>
-              <td>{message.fromName || message.fromAddress || "—"}</td>
-              <td>{message.subject || "(no subject)"}</td>
-              <td>{message.labels.join(", ")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <h2 className="mt-8 mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Recent messages
+      </h2>
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>From</TableHead>
+              <TableHead>Subject</TableHead>
+              <TableHead>Labels</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {recentMessages.map((message: RecentMessage) => (
+              <TableRow key={message.id}>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {message.date.toISOString().slice(0, 16).replace("T", " ")}
+                </TableCell>
+                <TableCell className="max-w-[180px] truncate">{message.fromName || message.fromAddress || "—"}</TableCell>
+                <TableCell className="max-w-[360px] truncate">{message.subject || "(no subject)"}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {message.labels
+                      .filter((label) => !label.startsWith("\\"))
+                      .slice(0, 3)
+                      .map((label) => (
+                        <Badge key={label} variant="secondary" className="font-normal">
+                          {label}
+                        </Badge>
+                      ))}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </main>
   );
 }

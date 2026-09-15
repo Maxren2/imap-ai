@@ -10,9 +10,9 @@ export default async function EditRulePage({ params }: { params: Promise<{ id: s
   if (!rule) notFound();
 
   return (
-    <main>
-      <h1>Edit rule</h1>
-      <div className="card">
+    <main className="mx-auto max-w-4xl px-6 py-8">
+      <h1 className="text-2xl font-semibold tracking-tight">Edit rule</h1>
+      <div className="mt-6 rounded-lg border p-6">
         <RuleForm rule={rule} />
       </div>
     </main>
