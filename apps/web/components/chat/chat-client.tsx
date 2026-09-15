@@ -22,6 +22,7 @@ import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/componen
 import { Loader } from "@/components/ai-elements/loader";
 import { Button } from "@/components/ui/button";
 import { archiveSenders } from "@/app/bulk-archive/actions";
+import { labelSenderMessages } from "@/app/mail-actions";
 
 export function ChatClient({ chatId, initialMessages }: { chatId: string; initialMessages: UIMessage[] }) {
   const router = useRouter();
@@ -43,6 +44,7 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
   // tool call in the conversation tracks its own confirm/pending/done
   // state independently.
   const [archiveResults, setArchiveResults] = useState<Record<string, { archived: number }>>({});
+  const [labelResults, setLabelResults] = useState<Record<string, { labeled: number }>>({});
   const [pendingToolCallId, setPendingToolCallId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -55,6 +57,15 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
     });
   }
 
+  function confirmLabel(toolCallId: string, fromAddress: string, label: string) {
+    setPendingToolCallId(toolCallId);
+    startTransition(async () => {
+      const result = await labelSenderMessages(fromAddress, label);
+      setLabelResults((prev) => ({ ...prev, [toolCallId]: result }));
+      setPendingToolCallId(null);
+    });
+  }
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
       <Conversation>
@@ -63,7 +74,7 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
             <ConversationEmptyState
               icon={<Sparkles className="size-6" />}
               title="Ask your assistant"
-              description='Try "list my rules", "create a rule for GitHub notifications", or "how many emails from LinkedIn do I have?"'
+              description='Try "list my rules", "label mail from X as Newsletter", or "how many emails from LinkedIn do I have?"'
             />
           ) : (
             messages.map((message) => (
@@ -83,8 +94,11 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
                         errorText?: string;
                       };
                       const isArchiveLookup = toolPart.type === "tool-archiveSender" && toolPart.state === "output-available";
+                      const isLabelLookup = toolPart.type === "tool-labelSender" && toolPart.state === "output-available";
                       const fromAddress = (toolPart.input as { fromAddress?: string } | undefined)?.fromAddress;
+                      const label = (toolPart.input as { label?: string } | undefined)?.label;
                       const archiveResult = archiveResults[toolPart.toolCallId];
+                      const labelResult = labelResults[toolPart.toolCallId];
 
                       return (
                         <Tool key={i}>
@@ -107,6 +121,25 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
                                   >
                                     {isPending && pendingToolCallId === toolPart.toolCallId && <Loader2 className="animate-spin" />}
                                     Confirm Archive
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                            {isLabelLookup && fromAddress && label && (
+                              <div className="px-4 pb-4">
+                                {labelResult ? (
+                                  <p className="text-sm text-muted-foreground">
+                                    Labeled {labelResult.labeled} message{labelResult.labeled === 1 ? "" : "s"} from {fromAddress} as
+                                    "{label}".
+                                  </p>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    disabled={isPending && pendingToolCallId === toolPart.toolCallId}
+                                    onClick={() => confirmLabel(toolPart.toolCallId, fromAddress, label)}
+                                  >
+                                    {isPending && pendingToolCallId === toolPart.toolCallId && <Loader2 className="animate-spin" />}
+                                    Confirm Label
                                   </Button>
                                 )}
                               </div>

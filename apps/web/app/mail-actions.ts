@@ -57,6 +57,48 @@ export async function archiveMessages(messageIds: string[]): Promise<{ archived:
   return { archived };
 }
 
+/**
+ * Applies a label to every currently-inboxed message from a sender --
+ * called from chat's "Confirm Label" button (see labelSender in
+ * lib/ai/tools.ts and chat-client.tsx), same "model proposes a count, a
+ * real button executes" pattern as archiveSender/archiveMessages above.
+ * Scoped to inInbox messages to match what the chat tool's count lookup
+ * actually counted, and because every message this app tracks a uid for
+ * lives in INBOX (single-mailbox MVP). Does not update the local
+ * `Message.labels` column after a successful label -- rules:apply-actions
+ * doesn't either (see packages/core/src/rules/apply-actions.ts), so this
+ * stays consistent with that existing precedent rather than diverging for
+ * one call site; a future sync will pick up the real label.
+ */
+export async function labelSenderMessages(fromAddress: string, label: string): Promise<{ labeled: number }> {
+  const messages = await prisma.message.findMany({
+    where: { fromAddress, inInbox: true },
+    select: { id: true, uid: true },
+  });
+  if (messages.length === 0) return { labeled: 0 };
+
+  const gmailAddress = requireEnv("GMAIL_ADDRESS");
+  const client = await connectImap(gmailAddress);
+  const lock = await client.getMailboxLock("INBOX");
+
+  let labeled = 0;
+  try {
+    for (const message of messages) {
+      try {
+        await applyRuleActions(client, message.uid, [{ type: "label", label }]);
+        labeled++;
+      } catch (error) {
+        console.error(`Failed to label message ${message.id}:`, error);
+      }
+    }
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+
+  return { labeled };
+}
+
 export interface ThreadListMessagePlain {
   id: string;
   subject: string | null;

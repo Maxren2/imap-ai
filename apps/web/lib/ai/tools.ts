@@ -123,6 +123,23 @@ export function createChatTools(accountId: string) {
       },
     }),
 
+    // Same read-only-lookup-then-button-executes pattern as archiveSender
+    // above, reusing the exact rationale: the AI SDK's toolApproval
+    // mechanism was already found unreliable for archive in phase 8, so no
+    // mutating tool in this app uses it.
+    labelSender: tool({
+      description:
+        "Use this when the user wants to add a label to mail from a sender right now (a one-time request) -- do NOT use createRule for this. Looks up how many inboxed messages that sender has. This does NOT apply the label -- after calling this, tell the user you've found the count and that they need to click the Confirm Label button themselves to actually do it. Never tell the user the label has been applied just because you called this tool.",
+      inputSchema: z.object({
+        fromAddress: z.string().min(1).describe("The sender's email address"),
+        label: z.string().min(1).describe("The label name to apply"),
+      }),
+      execute: async ({ fromAddress, label }) => {
+        const inboxCount = await prisma.message.count({ where: { fromAddress, inInbox: true } });
+        return { fromAddress, label, inboxCount };
+      },
+    }),
+
     searchInbox: tool({
       description: "Search the user's synced mail by sender address/name or subject substring (case-insensitive). Returns a count and a few recent examples.",
       inputSchema: z.object({
