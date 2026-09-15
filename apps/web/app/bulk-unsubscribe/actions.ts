@@ -5,6 +5,7 @@ import { createSmtpTransport } from "@imap-ai/core/smtp";
 import { performOneClickUnsubscribe, isSafeHttpUrl } from "@imap-ai/core/unsubscribe";
 import { requireEnv } from "@imap-ai/core/imap-connect";
 import { revalidatePath } from "next/cache";
+import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
 export interface SenderRow {
   fromAddress: string;
@@ -18,14 +19,28 @@ export interface SenderRow {
   status: string;
 }
 
+export interface SenderCursor {
+  messageCount: number;
+  fromAddress: string;
+}
+
 /**
- * One row per distinct sender, with counts and that sender's most recent
- * unsubscribe info (Postgres ARRAY_AGG ... ORDER BY date DESC picks the
- * latest non-null value per group in one query rather than a per-sender
+ * One page of senders ranked by message count, with that sender's most
+ * recent unsubscribe info (Postgres ARRAY_AGG ... ORDER BY date DESC picks
+ * the latest non-null value per group in one query rather than a per-sender
  * follow-up query). Single-account MVP scope, so no account filter here --
  * same simplification used elsewhere in this codebase.
+ *
+ * Keyset pagination over an *aggregate* sort key: `messageCount DESC` alone
+ * isn't a stable cursor (ties are common -- many senders share the same
+ * small count), so the cursor is the compound `(messageCount, fromAddress)`
+ * pair, with `fromAddress ASC` as the tiebreaker on both the ORDER BY and
+ * the WHERE comparison. Wrapped in a CTE because Postgres won't let a WHERE
+ * clause reference an aggregate alias directly (that needs HAVING, and
+ * HAVING can't express "less than OR (equal AND tiebreak)" cleanly against
+ * a cursor that's already resolved before this query runs).
  */
-export async function listSenders(): Promise<SenderRow[]> {
+export async function listSenders(cursor?: SenderCursor): Promise<SenderRow[]> {
   const rows = await prisma.$queryRaw<
     {
       fromAddress: string;
@@ -38,20 +53,26 @@ export async function listSenders(): Promise<SenderRow[]> {
       listUnsubscribeOneClick: boolean | null;
     }[]
   >`
-    SELECT
-      "fromAddress",
-      (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
-      COUNT(*) AS "messageCount",
-      COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(flags))) AS "unreadCount",
-      COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
-      (ARRAY_AGG("listUnsubscribeUrl" ORDER BY date DESC))[1] AS "listUnsubscribeUrl",
-      (ARRAY_AGG("listUnsubscribeMailto" ORDER BY date DESC))[1] AS "listUnsubscribeMailto",
-      (ARRAY_AGG("listUnsubscribeOneClick" ORDER BY date DESC))[1] AS "listUnsubscribeOneClick"
-    FROM "Message"
-    WHERE "fromAddress" IS NOT NULL
-    GROUP BY "fromAddress"
-    ORDER BY "messageCount" DESC
-    LIMIT 300
+    WITH agg AS (
+      SELECT
+        "fromAddress",
+        (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
+        COUNT(*) AS "messageCount",
+        COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(flags))) AS "unreadCount",
+        COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
+        (ARRAY_AGG("listUnsubscribeUrl" ORDER BY date DESC))[1] AS "listUnsubscribeUrl",
+        (ARRAY_AGG("listUnsubscribeMailto" ORDER BY date DESC))[1] AS "listUnsubscribeMailto",
+        (ARRAY_AGG("listUnsubscribeOneClick" ORDER BY date DESC))[1] AS "listUnsubscribeOneClick"
+      FROM "Message"
+      WHERE "fromAddress" IS NOT NULL
+      GROUP BY "fromAddress"
+    )
+    SELECT * FROM agg
+    WHERE ${cursor === undefined}
+       OR "messageCount" < ${cursor?.messageCount ?? 0}
+       OR ("messageCount" = ${cursor?.messageCount ?? 0} AND "fromAddress" > ${cursor?.fromAddress ?? ""})
+    ORDER BY "messageCount" DESC, "fromAddress" ASC
+    LIMIT ${SENDER_PAGE_SIZE}
   `;
 
   const statuses = await prisma.senderStatus.findMany({ select: { senderAddress: true, status: true } });
@@ -68,6 +89,13 @@ export async function listSenders(): Promise<SenderRow[]> {
     listUnsubscribeOneClick: row.listUnsubscribeOneClick ?? false,
     status: statusByAddress.get(row.fromAddress) ?? "unhandled",
   }));
+}
+
+export async function countSenders(): Promise<number> {
+  const rows = await prisma.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(DISTINCT "fromAddress") as count FROM "Message" WHERE "fromAddress" IS NOT NULL
+  `;
+  return Number(rows[0]?.count ?? 0);
 }
 
 async function setSenderStatus(accountId: string, senderAddress: string, status: string) {

@@ -3,6 +3,7 @@
 import { prisma } from "@imap-ai/core/db";
 import { revalidatePath } from "next/cache";
 import { archiveMessages } from "@/app/mail-actions";
+import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
 export interface ArchiveCandidateRow {
   fromAddress: string;
@@ -12,13 +13,20 @@ export interface ArchiveCandidateRow {
   unreadCount: number;
 }
 
+export interface ArchiveCandidateCursor {
+  inboxCount: number;
+  fromAddress: string;
+}
+
 /**
- * Senders ranked by how many of their messages are still sitting in the
- * inbox (not total message count, unlike Bulk Unsubscribe's listSenders --
- * a sender already fully archived isn't an archive candidate at all, so
- * HAVING excludes them rather than just sorting them last).
+ * One page of senders ranked by how many of their messages are still
+ * sitting in the inbox (not total message count, unlike Bulk Unsubscribe's
+ * listSenders -- a sender already fully archived isn't an archive
+ * candidate at all, so HAVING excludes them rather than just sorting them
+ * last). Compound keyset cursor over the same aggregate-sort problem as
+ * listSenders -- see that function's comment for why a CTE.
  */
-export async function listArchiveCandidates(): Promise<ArchiveCandidateRow[]> {
+export async function listArchiveCandidates(cursor?: ArchiveCandidateCursor): Promise<ArchiveCandidateRow[]> {
   const rows = await prisma.$queryRaw<
     {
       fromAddress: string;
@@ -28,18 +36,24 @@ export async function listArchiveCandidates(): Promise<ArchiveCandidateRow[]> {
       unreadCount: bigint;
     }[]
   >`
-    SELECT
-      "fromAddress",
-      (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
-      MAX(date) AS "lastDate",
-      COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
-      COUNT(*) FILTER (WHERE "inInbox" = true AND NOT ('\\Seen' = ANY(flags))) AS "unreadCount"
-    FROM "Message"
-    WHERE "fromAddress" IS NOT NULL
-    GROUP BY "fromAddress"
-    HAVING COUNT(*) FILTER (WHERE "inInbox" = true) > 0
-    ORDER BY "inboxCount" DESC
-    LIMIT 300
+    WITH agg AS (
+      SELECT
+        "fromAddress",
+        (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
+        MAX(date) AS "lastDate",
+        COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
+        COUNT(*) FILTER (WHERE "inInbox" = true AND NOT ('\\Seen' = ANY(flags))) AS "unreadCount"
+      FROM "Message"
+      WHERE "fromAddress" IS NOT NULL
+      GROUP BY "fromAddress"
+      HAVING COUNT(*) FILTER (WHERE "inInbox" = true) > 0
+    )
+    SELECT * FROM agg
+    WHERE ${cursor === undefined}
+       OR "inboxCount" < ${cursor?.inboxCount ?? 0}
+       OR ("inboxCount" = ${cursor?.inboxCount ?? 0} AND "fromAddress" > ${cursor?.fromAddress ?? ""})
+    ORDER BY "inboxCount" DESC, "fromAddress" ASC
+    LIMIT ${SENDER_PAGE_SIZE}
   `;
 
   return rows.map((row) => ({
@@ -49,6 +63,18 @@ export async function listArchiveCandidates(): Promise<ArchiveCandidateRow[]> {
     inboxCount: Number(row.inboxCount),
     unreadCount: Number(row.unreadCount),
   }));
+}
+
+export async function countArchiveCandidates(): Promise<number> {
+  const rows = await prisma.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*) as count FROM (
+      SELECT "fromAddress" FROM "Message"
+      WHERE "fromAddress" IS NOT NULL
+      GROUP BY "fromAddress"
+      HAVING COUNT(*) FILTER (WHERE "inInbox" = true) > 0
+    ) t
+  `;
+  return Number(rows[0]?.count ?? 0);
 }
 
 /**

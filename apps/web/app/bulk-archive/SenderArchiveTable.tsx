@@ -6,17 +6,33 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Archive, Loader2 } from "lucide-react";
-import { archiveSenders, type ArchiveCandidateRow } from "./actions";
+import { archiveSenders, listArchiveCandidates, type ArchiveCandidateRow } from "./actions";
+import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-export function SenderArchiveTable({ senders }: { senders: ArchiveCandidateRow[] }) {
+export function SenderArchiveTable({ senders, totalCount }: { senders: ArchiveCandidateRow[]; totalCount: number }) {
   const [rows, setRows] = useState(senders);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [pendingAddress, setPendingAddress] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(senders.length === SENDER_PAGE_SIZE && senders.length < totalCount);
+
+  async function loadMore() {
+    if (rows.length === 0) return;
+    setIsLoadingMore(true);
+    try {
+      const last = rows[rows.length - 1];
+      const next = await listArchiveCandidates({ inboxCount: last.inboxCount, fromAddress: last.fromAddress });
+      setRows((prev) => [...prev, ...next]);
+      setHasMore(next.length === SENDER_PAGE_SIZE);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
 
   const allSelected = rows.length > 0 && selected.size === rows.length;
   const someSelected = selected.size > 0;
@@ -124,6 +140,14 @@ export function SenderArchiveTable({ senders }: { senders: ArchiveCandidateRow[]
       </Table>
       {rows.length === 0 && (
         <p className="px-3 py-8 text-center text-sm text-muted-foreground">Nothing left to archive.</p>
+      )}
+      {hasMore && (
+        <div className="flex justify-center border-t px-3 py-3">
+          <Button size="sm" variant="outline" disabled={isLoadingMore} onClick={loadMore}>
+            {isLoadingMore && <Loader2 className="animate-spin" />}
+            Load more senders
+          </Button>
+        </div>
       )}
     </div>
   );

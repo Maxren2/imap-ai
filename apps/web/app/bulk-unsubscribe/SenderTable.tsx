@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Mail, ExternalLink, Ban } from "lucide-react";
-import { unsubscribeSender, type SenderRow } from "./actions";
+import { unsubscribeSender, listSenders, type SenderRow } from "./actions";
+import { SENDER_PAGE_SIZE } from "@/lib/constants";
 
 type Filter = "unhandled" | "all" | "unsubscribed";
 
-export function SenderTable({ senders }: { senders: SenderRow[] }) {
+export function SenderTable({ senders, totalCount }: { senders: SenderRow[]; totalCount: number }) {
   const [filter, setFilter] = useState<Filter>("unhandled");
   const [rows, setRows] = useState(senders);
   const [pendingAddress, setPendingAddress] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(senders.length === SENDER_PAGE_SIZE && senders.length < totalCount);
 
   const filtered = useMemo(() => {
     if (filter === "all") return rows;
@@ -33,6 +36,19 @@ export function SenderTable({ senders }: { senders: SenderRow[] }) {
       }
       setPendingAddress(null);
     });
+  }
+
+  async function loadMore() {
+    if (rows.length === 0) return;
+    setIsLoadingMore(true);
+    try {
+      const last = rows[rows.length - 1];
+      const next = await listSenders({ messageCount: last.messageCount, fromAddress: last.fromAddress });
+      setRows((prev) => [...prev, ...next]);
+      setHasMore(next.length === SENDER_PAGE_SIZE);
+    } finally {
+      setIsLoadingMore(false);
+    }
   }
 
   return (
@@ -111,6 +127,14 @@ export function SenderTable({ senders }: { senders: SenderRow[] }) {
         </Table>
         {filtered.length === 0 && (
           <p className="px-3 py-8 text-center text-sm text-muted-foreground">No senders in this view.</p>
+        )}
+        {hasMore && (
+          <div className="flex justify-center border-t px-3 py-3">
+            <Button size="sm" variant="outline" disabled={isLoadingMore} onClick={loadMore}>
+              {isLoadingMore && <Loader2 className="animate-spin" />}
+              Load more senders
+            </Button>
+          </div>
         )}
       </div>
     </div>
