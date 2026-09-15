@@ -11,6 +11,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
@@ -23,6 +24,15 @@ import { Loader } from "@/components/ai-elements/loader";
 import { Button } from "@/components/ui/button";
 import { archiveSenders } from "@/app/bulk-archive/actions";
 import { labelSenderMessages } from "@/app/mail-actions";
+
+// Deliberately mapped to real, working tools (listRules/searchInbox/
+// labelSender) rather than inbox-zero's real suggestions ("Help me handle
+// my inbox today," "Suggest rules I should add") -- this assistant doesn't
+// have an autonomous inbox-handling workflow or a rule-suggestion tool, and
+// promising one here would repeat the exact over-promising mistake already
+// found and fixed once in this project (see DESIGN.md section 28/phase 8:
+// a mutating tool must never claim more than it can actually do).
+const SUGGESTED_PROMPTS = ["List my rules", "How many emails do I have from LinkedIn?", "Label mail from a sender"];
 
 export function ChatClient({ chatId, initialMessages }: { chatId: string; initialMessages: UIMessage[] }) {
   const router = useRouter();
@@ -71,11 +81,29 @@ export function ChatClient({ chatId, initialMessages }: { chatId: string; initia
       <Conversation>
         <ConversationContent>
           {messages.length === 0 ? (
-            <ConversationEmptyState
-              icon={<Sparkles className="size-6" />}
-              title="Ask your assistant"
-              description='Try "list my rules", "label mail from X as Newsletter", or "how many emails from LinkedIn do I have?"'
-            />
+            <ConversationEmptyState>
+              <Empty className="border-none p-0">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Sparkles />
+                  </EmptyMedia>
+                  <EmptyTitle>Ask your assistant</EmptyTitle>
+                  <EmptyDescription>
+                    It can list and create rules, search your synced mail, and propose an archive or label for you to
+                    confirm.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {SUGGESTED_PROMPTS.map((prompt) => (
+                      <Button key={prompt} type="button" variant="outline" size="sm" className="rounded-full" onClick={() => sendMessage({ text: prompt })}>
+                        {prompt}
+                      </Button>
+                    ))}
+                  </div>
+                </EmptyContent>
+              </Empty>
+            </ConversationEmptyState>
           ) : (
             messages.map((message) => (
               <Message from={message.role} key={message.id}>
