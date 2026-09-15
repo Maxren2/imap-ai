@@ -72,6 +72,14 @@ model Message {
   subject        String?
   fromAddress    String?
   fromName       String?
+  // Only meaningfully populated for messages we sent (the IMAP envelope's
+  // "to" address) -- used by the No-Reply feature to show who a sent
+  // message went to, since `fromAddress` on a sent message is our own
+  // address, not the recipient's. Not backfilled for existing sent mail by
+  // a normal incremental sync (which only fetches UIDs newer than the last
+  // seen one) -- see `npm run backfill-to-address` for that.
+  toAddress      String?
+  toName         String?
   date           DateTime
   flags          String[]
   labels         String[]

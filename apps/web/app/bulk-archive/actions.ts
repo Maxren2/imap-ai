@@ -33,7 +33,7 @@ export async function listArchiveCandidates(): Promise<ArchiveCandidateRow[]> {
       (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
       MAX(date) AS "lastDate",
       COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
-      COUNT(*) FILTER (WHERE "inInbox" = true AND NOT ('\Seen' = ANY(flags))) AS "unreadCount"
+      COUNT(*) FILTER (WHERE "inInbox" = true AND NOT ('\\Seen' = ANY(flags))) AS "unreadCount"
     FROM "Message"
     WHERE "fromAddress" IS NOT NULL
     GROUP BY "fromAddress"

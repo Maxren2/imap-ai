@@ -35,6 +35,7 @@ export function resolveBackfillSince(): Date | undefined {
 
 async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
   const from = message.envelope?.from?.[0];
+  const to = message.envelope?.to?.[0];
   const flags = message.flags ? Array.from(message.flags) : [];
   const labels = message.labels ? Array.from(message.labels) : [];
   const unsubscribe = await parseUnsubscribeHeaders(message.headers ?? Buffer.alloc(0));
@@ -57,6 +58,8 @@ async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
       subject: message.envelope?.subject ?? null,
       fromAddress: from?.address ?? null,
       fromName: from?.name ?? null,
+      toAddress: to?.address ?? null,
+      toName: to?.name ?? null,
       date: message.envelope?.date ?? new Date(),
       flags,
       labels,

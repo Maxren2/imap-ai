@@ -42,7 +42,7 @@ export async function listSenders(): Promise<SenderRow[]> {
       "fromAddress",
       (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
       COUNT(*) AS "messageCount",
-      COUNT(*) FILTER (WHERE NOT ('\Seen' = ANY(flags))) AS "unreadCount",
+      COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(flags))) AS "unreadCount",
       COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
       (ARRAY_AGG("listUnsubscribeUrl" ORDER BY date DESC))[1] AS "listUnsubscribeUrl",
       (ARRAY_AGG("listUnsubscribeMailto" ORDER BY date DESC))[1] AS "listUnsubscribeMailto",

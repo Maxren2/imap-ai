@@ -14,13 +14,26 @@ export interface VolumeDay {
  * one for v1, see DESIGN.md). "Sent" is read off the `labels` array
  * (Gmail's \Sent label), the same signal the "Sent by me" example rule
  * already uses elsewhere in this codebase.
+ *
+ * IMPORTANT: inside a $queryRaw template literal, a Gmail system label
+ * like \Sent/\Seen/\Inbox MUST be written with a doubled backslash
+ * ('\\Sent') -- a single backslash ('\Sent') is not a recognized JS
+ * escape sequence, so the template literal silently cooks it down to
+ * 'Sent' (backslash dropped), which then matches nothing in Postgres.
+ * This was shipped broken for a while (found while building the No-Reply
+ * feature): getVolumeOverTime's "sent" bucket, getTopSenders' and
+ * getCategoryBreakdown's self-sent-mail exclusion, and the Unread counts
+ * in bulk-archive/actions.ts and bulk-unsubscribe/actions.ts (same
+ * '\Seen' mistake) were all silently no-ops. Caught by directly comparing
+ * a raw SQL COUNT(*) against a known-correct number, not by a chart
+ * "looking plausible" -- see DESIGN.md's phase-9 write-up.
  */
 export async function getVolumeOverTime(): Promise<VolumeDay[]> {
   const rows = await prisma.$queryRaw<{ day: Date; received: bigint; sent: bigint }[]>`
     SELECT
       date_trunc('day', date) AS day,
-      COUNT(*) FILTER (WHERE NOT ('\Sent' = ANY(labels))) AS received,
-      COUNT(*) FILTER (WHERE '\Sent' = ANY(labels)) AS sent
+      COUNT(*) FILTER (WHERE NOT ('\\Sent' = ANY(labels))) AS received,
+      COUNT(*) FILTER (WHERE '\\Sent' = ANY(labels)) AS sent
     FROM "Message"
     WHERE date >= NOW() - INTERVAL '90 days'
     GROUP BY day
@@ -48,7 +61,7 @@ export async function getTopSenders(limit = 10): Promise<TopSenderRow[]> {
       (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
       COUNT(*) AS count
     FROM "Message"
-    WHERE "fromAddress" IS NOT NULL AND NOT ('\Sent' = ANY(labels))
+    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels))
     GROUP BY "fromAddress"
     ORDER BY count DESC
     LIMIT ${limit}
@@ -99,7 +112,7 @@ export async function getCategoryBreakdown(): Promise<CategoryBreakdownRow[]> {
       COUNT(*) AS "messageCount",
       BOOL_OR("listUnsubscribeUrl" IS NOT NULL OR "listUnsubscribeMailto" IS NOT NULL) AS "hasUnsubscribe"
     FROM "Message"
-    WHERE "fromAddress" IS NOT NULL AND NOT ('\Sent' = ANY(labels))
+    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels))
     GROUP BY "fromAddress"
     ORDER BY "messageCount" DESC
     LIMIT 300
