@@ -38,6 +38,9 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
   const conditions = safeParseConditions(rule?.conditions);
   const actions = safeParseActions(rule?.actions);
   const label = actions.find((action) => action.type === "label");
+  const draft = actions.find((action) => action.type === "draft");
+  const autoReply = actions.find((action) => action.type === "autoReply");
+  const autoForward = actions.find((action) => action.type === "autoForward");
 
   const saveWithId = saveRule.bind(null, rule?.id ?? null);
 
@@ -159,6 +162,74 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
           An existing Gmail label is reused if the name matches; otherwise a new one is created. Reserved system
           labels (Inbox, Sent, Important, etc.) can&apos;t be targeted. Delete moves matches to Trash -- recoverable
           there, not a permanent erase. If both Archive and Delete are checked, Delete wins.
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+        <label className="text-sm font-medium">Draft a reply (AI)</label>
+        <div className="flex items-center gap-2">
+          <Checkbox id="action_draft" name="action_draft" defaultChecked={!!draft} />
+          <label htmlFor="action_draft" className="text-sm">
+            Save an AI-drafted reply to Drafts
+          </label>
+        </div>
+        <textarea
+          name="draft_instructions"
+          defaultValue={draft?.type === "draft" ? draft.instructions : ""}
+          placeholder="e.g. Politely decline and say I'm not available until next month."
+          className="min-h-16 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <span className="text-xs text-muted-foreground">
+          Never sent automatically -- saved to the Drafts folder for you to review and send yourself. Needs
+          OLLAMA_BASE_URL/OLLAMA_MODEL configured.
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+        <label className="text-sm font-medium text-destructive">Auto-reply (AI, sends immediately -- no review)</label>
+        <div className="flex items-center gap-2">
+          <Checkbox id="action_autoReply" name="action_autoReply" defaultChecked={!!autoReply} />
+          <label htmlFor="action_autoReply" className="text-sm">
+            Send an AI-drafted reply automatically
+          </label>
+        </div>
+        <textarea
+          name="autoReply_instructions"
+          defaultValue={autoReply?.type === "autoReply" ? autoReply.instructions : ""}
+          placeholder="e.g. Confirm receipt and say I'll respond within 2 business days."
+          className="min-h-16 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <span className="text-xs text-destructive">
+          Sends real email on your behalf with no human review, immediately when this rule matches. Capped at
+          RULES_AUTO_SEND_MAX_PER_RUN sends per run (default 20) so a large match backlog can&apos;t trigger a burst
+          of sends at once. Only enable this if you understand and accept that risk.
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+        <label className="text-sm font-medium text-destructive">Auto-forward (sends immediately -- no review)</label>
+        <div className="flex items-center gap-2">
+          <Checkbox id="action_autoForward" name="action_autoForward" defaultChecked={!!autoForward} />
+          <label htmlFor="action_autoForward" className="text-sm">
+            Forward matches automatically to
+          </label>
+          <Input
+            type="email"
+            name="autoForward_to"
+            defaultValue={autoForward?.type === "autoForward" ? autoForward.to : ""}
+            placeholder="someone@example.com"
+            className="w-56"
+          />
+        </div>
+        <Input
+          type="text"
+          name="autoForward_note"
+          defaultValue={autoForward?.type === "autoForward" ? (autoForward.note ?? "") : ""}
+          placeholder="Note to include (optional)"
+        />
+        <span className="text-xs text-destructive">
+          Sends real email on your behalf with no human review, immediately when this rule matches. Capped at
+          RULES_AUTO_SEND_MAX_PER_RUN forwards per run (default 20).
         </span>
       </div>
 

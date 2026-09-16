@@ -18,6 +18,22 @@ export async function requireUser() {
 }
 
 /**
+ * Same as requireUser(), plus an admin check -- the only authorization
+ * tier this app has (see schema.prisma's User.role comment). Redirects
+ * non-admins to the Inbox rather than showing a bare 403, consistent with
+ * how the rest of the app redirects instead of erroring on an
+ * access-boundary miss (e.g. getActiveEmailAccount's account-not-found
+ * case). The role comes from the session JWT (set at sign-in), not a
+ * fresh database read -- see auth.ts's callbacks comment on why a role
+ * change doesn't apply retroactively to an already-signed-in session.
+ */
+export async function requireAdmin() {
+  const user = await requireUser();
+  if (user.role !== "admin") redirect("/");
+  return user;
+}
+
+/**
  * Resolves which of the signed-in user's linked mailboxes is "active" --
  * the account-scoped equivalent of the old `prisma.account.findFirst()`
  * every query used to do. Reads the activeAccountId cookie (set by the

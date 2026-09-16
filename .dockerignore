@@ -1,0 +1,16 @@
+# .env is never baked into the image -- real credentials belong in the
+# container's runtime environment (docker run -e / --env-file / compose
+# env_file), not in a pushed, potentially-public image layer.
+.env
+.env.local
+.env.*.local
+
+.git
+.claude
+**/node_modules
+**/.next
+**/dist
+*.log
+.dockerignore
+Dockerfile
+docker-compose*.yml

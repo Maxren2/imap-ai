@@ -5,6 +5,7 @@ import { connectAccountImap, createAccountSmtpTransport } from "@imap-ai/core/ma
 import { applyRuleActions } from "@imap-ai/core/rules/actions";
 import { ensureMessageBody } from "@imap-ai/core/body";
 import { sendAndSaveToSent } from "@imap-ai/core/smtp";
+import { replySubject, forwardSubject, buildForwardBody } from "@imap-ai/core/mail-format";
 import type { EmailAccount } from "@imap-ai/core/prisma";
 import { revalidatePath } from "next/cache";
 import { runNpmScript, getLatestBackgroundRuns, cancelBackgroundRun } from "@/lib/background-run";
@@ -431,16 +432,6 @@ export async function getThreadMessages(threadId: string): Promise<ThreadMessage
   }));
 }
 
-function replySubject(subject: string | null): string {
-  const s = subject?.trim() || "(no subject)";
-  return /^re:/i.test(s) ? s : `Re: ${s}`;
-}
-
-function forwardSubject(subject: string | null): string {
-  const s = subject?.trim() || "(no subject)";
-  return /^fwd?:/i.test(s) ? s : `Fwd: ${s}`;
-}
-
 /**
  * Replies to whichever party isn't us on the thread's latest message --
  * if that latest message is one we sent (we already replied last), reply
@@ -493,19 +484,7 @@ export async function forwardMessage(messageId: string, to: string, note: string
   try {
     const body = message.bodyText ?? (await ensureMessageBody(client, message));
     const transport = await createAccountSmtpTransport(account);
-    const quoted = [
-      note.trim(),
-      "",
-      "---------- Forwarded message ---------",
-      `From: ${message.fromName ? `${message.fromName} <${message.fromAddress}>` : (message.fromAddress ?? "")}`,
-      `Date: ${message.date.toUTCString()}`,
-      `Subject: ${message.subject ?? "(no subject)"}`,
-      `To: ${message.toAddress ?? ""}`,
-      "",
-      body ?? "(no body)",
-    ]
-      .filter((line, i) => i !== 0 || line !== "")
-      .join("\n");
+    const quoted = buildForwardBody(message, body, note);
 
     await sendAndSaveToSent(transport, client, account.email, {
       to,

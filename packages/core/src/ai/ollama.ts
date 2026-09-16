@@ -85,3 +85,60 @@ export async function evaluateAiPrompt(config: OllamaConfig, input: AiMatchInput
   const answer = data.message?.content?.trim().toLowerCase() ?? "";
   return answer.startsWith("yes");
 }
+
+export interface AiDraftInput {
+  instructions: string;
+  subject: string | null;
+  fromAddress: string | null;
+  fromName: string | null;
+  body: string | null;
+}
+
+/**
+ * Asks the local LLM to write a reply body from a rule's plain-language
+ * instructions plus the original message -- the generation counterpart to
+ * evaluateAiPrompt's yes/no classification above. Used by both the
+ * "draft" (never sent, saved to Drafts for review) and "autoReply"
+ * (sent immediately) rule actions -- see rules/sending-actions.ts. The
+ * distinction between those two is entirely in what the caller does with
+ * the returned text, not in how it's generated.
+ */
+export async function generateReplyDraft(config: OllamaConfig, input: AiDraftInput): Promise<string> {
+  const response = await fetch(`${config.baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: config.model,
+      stream: false,
+      options: { temperature: 0.3 },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You draft plain-text email replies on someone's behalf, following their instructions. Write ONLY the reply body -- no subject line, no explanation of what you're doing, no markdown formatting, no placeholder brackets. Match the language of the original email. Sign off simply if appropriate, but do not invent a name if none is given in the instructions.",
+        },
+        {
+          role: "user",
+          content: [
+            `Instructions for this reply: ${input.instructions}`,
+            "",
+            `Original email from: ${input.fromName ? `${input.fromName} <${input.fromAddress ?? ""}>` : (input.fromAddress ?? "(unknown)")}`,
+            `Subject: ${input.subject ?? "(no subject)"}`,
+            `Body: ${input.body ? input.body.slice(0, MAX_BODY_CHARS_IN_PROMPT) : "(no body available)"}`,
+            "",
+            "Write the reply body now.",
+          ].join("\n"),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama request failed: ${response.status} ${response.statusText} (${await response.text()})`);
+  }
+
+  const data = (await response.json()) as OllamaChatResponse;
+  const text = data.message?.content?.trim() ?? "";
+  if (!text) throw new Error("AI returned an empty draft.");
+  return text;
+}

@@ -18,6 +18,14 @@ const conditionShape = z.object({
   value: z.string().min(1),
 });
 
+// Deliberately does NOT include draft/autoReply/autoForward, even though
+// core's real ruleActionSchema (rules/actions.ts) now supports them --
+// chat's createRule tool stays limited to the non-sending action types on
+// purpose. Configuring a rule that sends real email automatically is a
+// high-stakes decision (see rules/actions.ts's own comment on the risk);
+// it belongs behind the explicit, clearly-labeled warnings on the /rules
+// form (RuleForm.tsx), not something the model can set up mid-
+// conversation from a natural-language request it might misread.
 const actionShape = z.discriminatedUnion("type", [
   z.object({ type: z.literal("label"), label: z.string().min(1) }),
   z.object({ type: z.literal("archive") }),

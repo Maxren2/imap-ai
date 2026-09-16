@@ -1,0 +1,5 @@
+# Force LF regardless of a Windows checkout's core.autocrlf -- a shell
+# script checked out with CRLF line endings fails to run in a Linux
+# container ("bad interpreter" on the shebang line), which would silently
+# break the Docker build on this project's actual Windows dev machine.
+*.sh text eol=lf

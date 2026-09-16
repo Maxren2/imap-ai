@@ -3,24 +3,41 @@ import type { ImapFlow } from "imapflow";
 import { resolveOrCreateLabel } from "../labels";
 import { findSpecialUseMailbox } from "../special-use";
 
-// Deliberately a small subset of inbox-zero's action types (LABEL, ARCHIVE,
-// REPLY, FORWARD, DRAFT_EMAIL, MARK_SPAM, DELETE, ...). Label/archive/
-// markRead/star/delete are all non-sending, reversible-in-spirit moves
-// (delete moves to Trash, not a permanent expunge -- recoverable the same
-// way archive is). Reply/forward/draft are a different, meaningfully
-// riskier class -- composing and *sending* real content automatically
-// when a rule matches, with no human review in the loop -- and stay
-// deliberately deferred as *rule* actions even though manual, user-
-// composed reply/forward now exist elsewhere in the app (mail-actions.ts's
-// replyToThread/forwardMessage): a person clicking Send on their own
-// words is a different risk profile than a rule silently emailing
-// someone on your behalf.
+// label/archive/markRead/star/delete are all non-sending, reversible-in-
+// spirit moves (delete moves to Trash, not a permanent expunge --
+// recoverable the same way archive is) -- handled entirely by
+// applyRuleActions below, given just an IMAP client and a uid.
+//
+// draft/autoReply/autoForward are a different, meaningfully riskier class:
+// composing (and, for autoReply/autoForward, actually *sending*) real
+// content automatically when a rule matches. These were deliberately
+// deferred for a long time -- until the person running this app explicitly
+// asked for them, aware of that risk, after manual (user-composed,
+// user-clicks-Send) reply/forward already existed as the lower-risk
+// option. They are NOT handled by applyRuleActions (which only ever gets
+// an ImapFlow + uid, not the SMTP transport / AI config / full message
+// content these need) -- see rules/sending-actions.ts's applySendingActions
+// and RULES_AUTO_SEND_MAX_PER_RUN's per-run cap in rules/apply-actions.ts,
+// which bounds how many real sends one run can trigger so a
+// misconfigured rule with a huge match backlog can't blast out thousands
+// of emails in one pass.
+//   - draft: AI drafts a reply from `instructions` + the message, saved to
+//     the Drafts folder -- never sent automatically, a human still has to
+//     open it and click Send in their real mail client.
+//   - autoReply: same AI-drafted reply, but actually sent immediately, no
+//     human review.
+//   - autoForward: forwards the matched message (quoted, like manual
+//     forward) to a fixed `to` address, with an optional static `note`.
+//     No AI involved -- deterministic, like label/archive.
 export const ruleActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("label"), label: z.string().min(1) }),
   z.object({ type: z.literal("archive") }),
   z.object({ type: z.literal("markRead") }),
   z.object({ type: z.literal("star") }),
   z.object({ type: z.literal("delete") }),
+  z.object({ type: z.literal("draft"), instructions: z.string().min(1) }),
+  z.object({ type: z.literal("autoReply"), instructions: z.string().min(1) }),
+  z.object({ type: z.literal("autoForward"), to: z.string().email(), note: z.string().optional() }),
 ]);
 
 export type RuleAction = z.infer<typeof ruleActionSchema>;
@@ -30,6 +47,11 @@ export type RuleActions = z.infer<typeof ruleActionsSchema>;
 
 export function parseRuleActions(raw: unknown): RuleActions {
   return ruleActionsSchema.parse(raw);
+}
+
+/** draft/autoReply/autoForward need SMTP/AI/full-message context applyRuleActions doesn't have -- see rules/sending-actions.ts. */
+export function isSendingAction(action: RuleAction): boolean {
+  return action.type === "draft" || action.type === "autoReply" || action.type === "autoForward";
 }
 
 /**
@@ -54,6 +76,11 @@ export function parseRuleActions(raw: unknown): RuleActions {
  * wins (moving to Trash already removes it from the inbox, an archive
  * move afterward would be both redundant and racing against a UID that
  * no longer exists there).
+ *
+ * Throws if given a draft/autoReply/autoForward action -- those need an
+ * SMTP transport, AI config, and full message content this function
+ * doesn't have (see isSendingAction/rules/sending-actions.ts); a caller
+ * passing one here is a bug, not something to silently ignore.
  */
 export async function applyRuleActions(client: ImapFlow, uid: number, actions: RuleActions): Promise<void> {
   const range = { uid: String(uid) };
@@ -76,6 +103,10 @@ export async function applyRuleActions(client: ImapFlow, uid: number, actions: R
       case "archive":
       case "delete":
         break; // handled after the loop, see above
+      case "draft":
+      case "autoReply":
+      case "autoForward":
+        throw new Error(`applyRuleActions cannot handle a "${action.type}" action -- use applySendingActions instead.`);
     }
   }
 

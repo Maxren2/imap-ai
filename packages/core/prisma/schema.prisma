@@ -16,6 +16,15 @@ model User {
   id            String         @id @default(cuid())
   email         String         @unique
   passwordHash  String
+  // Plain string, not a Prisma enum, matching this project's existing
+  // convention for small closed sets (Rule.systemType, SenderStatus.status)
+  // -- "admin" or "user". The very first person to ever sign up becomes
+  // admin automatically (see apps/web/app/signup/actions.ts); every
+  // signup after that defaults to "user". Admins can promote/demote other
+  // users and remove accounts from /admin/users -- this is the only
+  // authorization tier in the app right now, not a general role/permission
+  // system.
+  role          String         @default("user")
   createdAt     DateTime       @default(now())
   emailAccounts EmailAccount[]
 }

@@ -36,20 +36,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        return { id: user.id, email: user.email };
+        return { id: user.id, email: user.email, role: user.role };
       },
     }),
   ],
   callbacks: {
     // The default JWT/session callbacks drop custom fields -- thread the
-    // user id through explicitly so requireUser() (lib/session.ts) can
-    // read it without a second DB lookup keyed only by email.
+    // user id and role through explicitly so requireUser()/requireAdmin()
+    // (lib/session.ts) can read them without a second DB lookup keyed only
+    // by email. Note: a role change made via /admin/users doesn't take
+    // effect for an already-signed-in session until it next signs in (the
+    // JWT isn't re-derived from the database on every request) -- a stale
+    // read here, not a stale write; the database row itself is always
+    // correct immediately.
     jwt: ({ token, user }) => {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        token.role = (user as { role?: string }).role ?? "user";
+      }
       return token;
     },
     session: ({ session, token }) => {
-      if (session.user) session.user.id = token.id as string;
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.role = (token.role as string) ?? "user";
+      }
       return session;
     },
   },

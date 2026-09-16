@@ -29,10 +29,11 @@ import { navItems } from "@/components/app-sidebar";
 // listener -- rendering the whole thing twice would double up both.
 const CommandPaletteContext = createContext<{ open: () => void } | null>(null);
 
-export function CommandPaletteProvider({ children }: { children: ReactNode }) {
+export function CommandPaletteProvider({ children, isAdmin }: { children: ReactNode; isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { setTheme } = useTheme();
+  const visibleItems = navItems.filter((item) => item.group !== "admin" || isAdmin);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -58,7 +59,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           <CommandGroup heading="Navigate">
-            {navItems
+            {visibleItems
               .filter((item) => !item.soon)
               .map((item) => (
                 <CommandItem

@@ -13,6 +13,8 @@
     "./rules/types": "./src/rules/types.ts",
     "./rules/evaluate": "./src/rules/evaluate.ts",
     "./rules/actions": "./src/rules/actions.ts",
+    "./rules/sending-actions": "./src/rules/sending-actions.ts",
+    "./mail-format": "./src/mail-format.ts",
     "./imap-connect": "./src/imap-connect.ts",
     "./unsubscribe": "./src/unsubscribe.ts",
     "./body": "./src/body.ts",

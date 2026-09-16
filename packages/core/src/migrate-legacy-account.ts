@@ -46,8 +46,12 @@ async function main() {
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({ data: { email, passwordHash } });
-  console.log(`Created user ${user.email}.`);
+  // This script only ever creates the very first user of a fresh
+  // multi-user upgrade -- same "first user becomes admin" rule as regular
+  // signup (apps/web/app/signup/actions.ts), applied explicitly here
+  // since this path bypasses that server action entirely.
+  const user = await prisma.user.create({ data: { email, passwordHash, role: "admin" } });
+  console.log(`Created user ${user.email} (admin).`);
 
   for (const account of orphaned) {
     const data: { userId: string; oauthRefreshTokenEnc?: string } = { userId: user.id };

@@ -22,7 +22,15 @@ export async function signup(_prevState: FormState, formData: FormData): Promise
   if (existing) return { error: "An account with that email already exists." };
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({ data: { email, passwordHash } });
+  // The very first person to ever sign up becomes admin automatically --
+  // self-signup stays open (no invite wall, see DESIGN.md's multi-user
+  // section on why), but someone needs to be able to manage other users
+  // once more than one exists. A race between two simultaneous first
+  // signups could in theory both read count 0 and both become admin --
+  // acceptable for this self-hosted, single-operator tool; not guarded
+  // with a transaction/lock given how unlikely and low-stakes that is here.
+  const isFirstUser = (await prisma.user.count()) === 0;
+  await prisma.user.create({ data: { email, passwordHash, role: isFirstUser ? "admin" : "user" } });
 
   try {
     await signIn("credentials", { email, password, redirectTo: "/add-account" });

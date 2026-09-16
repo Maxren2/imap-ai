@@ -33,6 +33,21 @@ function parseActionsFromForm(formData: FormData): RuleActions | null {
   if (formData.get("action_markRead")) actions.push({ type: "markRead" });
   if (formData.get("action_star")) actions.push({ type: "star" });
   if (formData.get("action_delete")) actions.push({ type: "delete" });
+
+  if (formData.get("action_draft")) {
+    const instructions = (formData.get("draft_instructions") as string | null)?.trim();
+    if (instructions) actions.push({ type: "draft", instructions });
+  }
+  if (formData.get("action_autoReply")) {
+    const instructions = (formData.get("autoReply_instructions") as string | null)?.trim();
+    if (instructions) actions.push({ type: "autoReply", instructions });
+  }
+  if (formData.get("action_autoForward")) {
+    const to = (formData.get("autoForward_to") as string | null)?.trim();
+    const note = (formData.get("autoForward_note") as string | null)?.trim();
+    if (to) actions.push({ type: "autoForward", to, ...(note ? { note } : {}) });
+  }
+
   if (actions.length === 0) return null;
   return ruleActionsSchema.parse(actions);
 }

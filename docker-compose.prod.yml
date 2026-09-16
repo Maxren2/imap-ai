@@ -1,0 +1,49 @@
+# A deployable stack -- postgres + the app itself, built from the
+# Dockerfile at the repo root. Kept separate from docker-compose.yml
+# (postgres-only) rather than adding a `web` service there, so the
+# existing local-dev workflow (`npm run db:up`, then `npm run dev`
+# against it directly on the host) is completely unaffected: that file's
+# `docker compose up -d postgres` targets one named service either way,
+# but a bare `docker compose up` with no service name now differs
+# between the two files, and dev-focused usage should keep pointing at
+# the dev-focused file.
+#
+# Usage: `docker compose -f docker-compose.prod.yml up -d --build`, with
+# a real .env in this directory (see .env.example) -- env_file passes it
+# straight through to the app container, DATABASE_URL should point at the
+# `postgres` service (postgresql://imap_ai:imap_ai@postgres:5432/imap_ai),
+# not `localhost`, since the app now runs inside this same compose
+# network rather than on the host.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: imap_ai
+      POSTGRES_PASSWORD: imap_ai
+      POSTGRES_DB: imap_ai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imap_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://imap_ai:imap_ai@postgres:5432/imap_ai
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:

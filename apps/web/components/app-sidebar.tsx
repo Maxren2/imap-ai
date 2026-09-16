@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff, Moon, Brush } from "lucide-react";
+import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff, Moon, Brush, ShieldCheck } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -36,7 +36,7 @@ export interface NavItem {
   // this sidebar, so there's no real inbox-zero equivalent to match here
   // either way), everything conversational under "Manage", everything
   // inbox-cleanup-flavored under "Cleanup".
-  group?: "manage" | "cleanup";
+  group?: "manage" | "cleanup" | "admin";
 }
 
 export const navItems: NavItem[] = [
@@ -49,6 +49,11 @@ export const navItems: NavItem[] = [
   { title: "Cold Email Blocker", href: "/cold-email-blocker", icon: ShieldOff, group: "cleanup" },
   { title: "Deep Clean", href: "/deep-clean", icon: Brush, group: "cleanup" },
   { title: "Analytics", href: "/stats", icon: BarChart3, group: "cleanup" },
+  // Only rendered for admins (see the "admin" group filtering below) --
+  // not filtered out of this shared array itself, so a non-admin's
+  // command palette (which also reads navItems, see command-palette.tsx)
+  // stays correct without needing its own separate admin check.
+  { title: "Users", href: "/admin/users", icon: ShieldCheck, group: "admin" },
 ];
 
 function DarkModeToggle() {
@@ -102,11 +107,20 @@ function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-export function AppSidebar({ accounts, activeAccountId }: { accounts: AccountRow[]; activeAccountId: string }) {
+export function AppSidebar({
+  accounts,
+  activeAccountId,
+  isAdmin,
+}: {
+  accounts: AccountRow[];
+  activeAccountId: string;
+  isAdmin: boolean;
+}) {
   const pathname = usePathname();
   const ungrouped = navItems.filter((item) => !item.group);
   const manageItems = navItems.filter((item) => item.group === "manage");
   const cleanupItems = navItems.filter((item) => item.group === "cleanup");
+  const adminItems = navItems.filter((item) => item.group === "admin");
 
   return (
     <Sidebar collapsible="icon">
@@ -139,6 +153,14 @@ export function AppSidebar({ accounts, activeAccountId }: { accounts: AccountRow
             <NavItems items={cleanupItems} pathname={pathname} />
           </SidebarGroupContent>
         </SidebarGroup>
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <NavItems items={adminItems} pathname={pathname} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <DarkModeToggle />

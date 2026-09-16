@@ -1,18 +1,34 @@
 import "../env.js";
 import { prisma } from "../db.js";
 import { Prisma } from "../generated/prisma/index.js";
-import { connectAccountImap } from "../mail-provider.js";
+import { connectAccountImap, createAccountSmtpTransport } from "../mail-provider.js";
 import { resolveAccounts } from "../account-scope.js";
-import { parseRuleActions, applyRuleActions } from "./actions.js";
+import { parseRuleActions, applyRuleActions, isSendingAction, type RuleActions } from "./actions.js";
+import { applySendingActions } from "./sending-actions.js";
+import { resolveOllamaConfig } from "../ai/ollama.js";
+import { ensureMessageBody } from "../body.js";
 import type { EmailAccount } from "../generated/prisma/index.js";
+import type { Transporter } from "nodemailer";
+
+// Caps how many draft/autoReply/autoForward actions one rule can execute
+// per rules:apply-actions run -- these are the ONLY action types that
+// send/save real content with no further review (autoForward/autoReply
+// send immediately; draft doesn't send, but still costs an AI call and
+// writes a real Drafts entry). A rule that suddenly matches a huge
+// backlog (e.g. right after enabling it, or a big backfill) should not be
+// able to fire hundreds of real sends in one pass -- the rest of its
+// pending matches are simply picked up on the next run, same idea as
+// RULES_AI_MAX_PER_RUN in rules/run.ts.
+const AUTO_SEND_MAX_PER_RUN = Number(process.env.RULES_AUTO_SEND_MAX_PER_RUN) || 20;
 
 /**
- * Applies each rule's actions (label/archive/markRead/star) to matches
- * that haven't been acted on yet. Separate from rules:run (detection) on
- * purpose -- matching is cheap and safe to run often, acting on the real
- * mailbox is not, so they run as distinct, independently-idempotent steps.
- * Loops over every linked account, one IMAP connection per account --
- * never shared, since a connection only ever sees one mailbox.
+ * Applies each rule's actions (label/archive/markRead/star/delete/draft/
+ * autoReply/autoForward) to matches that haven't been acted on yet.
+ * Separate from rules:run (detection) on purpose -- matching is cheap and
+ * safe to run often, acting on the real mailbox is not, so they run as
+ * distinct, independently-idempotent steps. Loops over every linked
+ * account, one IMAP connection per account -- never shared, since a
+ * connection only ever sees one mailbox.
  */
 async function applyActionsForAccount(account: EmailAccount): Promise<void> {
   const rulesWithActions = await prisma.rule.findMany({
@@ -23,7 +39,23 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
     rulesWithActions.map(async (rule) => {
       const pending = await prisma.ruleMatch.findMany({
         where: { ruleId: rule.id, actionsAppliedAt: null },
-        include: { message: { select: { id: true, uid: true, subject: true } } },
+        include: {
+          message: {
+            select: {
+              id: true,
+              uid: true,
+              subject: true,
+              fromAddress: true,
+              fromName: true,
+              toAddress: true,
+              date: true,
+              messageIdHeader: true,
+              bodyText: true,
+              bodyFetchedAt: true,
+              labels: true,
+            },
+          },
+        },
       });
       return { rule, pending };
     }),
@@ -35,16 +67,32 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
     return;
   }
 
+  // Only a rule with a draft/autoReply/autoForward action needs an SMTP
+  // transport at all -- most accounts have none of those, so this skips
+  // opening one unnecessarily. Parse failures are tolerated here (just
+  // treated as "no sending action"); the per-rule loop below reports them
+  // properly and skips that rule.
+  const anySendingAction = pendingByRule.some(({ rule, pending }) => {
+    if (pending.length === 0) return false;
+    try {
+      return parseRuleActions(rule.actions).some(isSendingAction);
+    } catch {
+      return false;
+    }
+  });
+
   // All current matches live in INBOX -- single-mailbox MVP scope, same
   // simplification already made for AI body-fetching in rules:run.
   const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
+  const smtpTransport: Transporter | undefined = anySendingAction ? await createAccountSmtpTransport(account) : undefined;
+  const ollamaConfig = anySendingAction ? resolveOllamaConfig() : undefined;
 
   try {
     for (const { rule, pending } of pendingByRule) {
       if (pending.length === 0) continue;
 
-      let actions;
+      let actions: RuleActions;
       try {
         actions = parseRuleActions(rule.actions);
       } catch (error) {
@@ -52,16 +100,53 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
         continue;
       }
 
+      const sendingActions = actions.filter(isSendingAction);
+      const simpleActions = actions.filter((action) => !isSendingAction(action));
+      const hasSending = sendingActions.length > 0;
+
       // Both archive and delete take the message out of the inbox --
       // whichever one applyRuleActions actually performs (delete wins if
       // both are somehow set, see its own comment), inInbox needs to flip.
       const removesFromInbox = actions.some((action) => action.type === "archive" || action.type === "delete");
 
+      // A rule with a sending action only processes up to
+      // AUTO_SEND_MAX_PER_RUN matches THIS run -- each one gets its full
+      // action list (simple + sending) applied atomically, or not touched
+      // at all, never partially (so a capped-out match doesn't end up with
+      // e.g. its label applied but actionsAppliedAt still null, which
+      // would make the next run try to re-label it -- harmless -- but also
+      // re-archive an already-moved UID -- not harmless). A rule with no
+      // sending action is uncapped, unchanged from before this feature.
+      const toProcess = hasSending ? pending.slice(0, AUTO_SEND_MAX_PER_RUN) : pending;
+      const deferred = pending.length - toProcess.length;
+
       let applied = 0;
       let failed = 0;
-      for (const match of pending) {
+      for (const match of toProcess) {
         try {
-          await applyRuleActions(client, match.message.uid, actions);
+          if (simpleActions.length > 0) {
+            await applyRuleActions(client, match.message.uid, simpleActions);
+          }
+          if (hasSending) {
+            if (!smtpTransport) throw new Error("SMTP transport unavailable for a sending action -- this is a bug.");
+            const bodyText =
+              match.message.bodyFetchedAt !== null ? match.message.bodyText : await ensureMessageBody(client, match.message);
+            await applySendingActions(
+              { imapClient: client, smtpTransport, fromEmail: account.email, ollamaConfig },
+              {
+                subject: match.message.subject,
+                fromAddress: match.message.fromAddress,
+                fromName: match.message.fromName,
+                toAddress: match.message.toAddress,
+                date: match.message.date,
+                messageIdHeader: match.message.messageIdHeader,
+                bodyText,
+                labels: match.message.labels,
+              },
+              sendingActions,
+            );
+          }
+
           await prisma.ruleMatch.update({
             where: { id: match.id },
             data: { actionsAppliedAt: new Date(), actionsError: null },
@@ -81,7 +166,8 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
         }
       }
 
-      console.log(`  [${account.email}] Rule "${rule.name}": applied actions to ${applied} match(es)${failed > 0 ? `, ${failed} failed` : ""}.`);
+      const deferredSuffix = deferred > 0 ? `, ${deferred} deferred to a later run (auto-send cap)` : "";
+      console.log(`  [${account.email}] Rule "${rule.name}": applied actions to ${applied} match(es)${failed > 0 ? `, ${failed} failed` : ""}${deferredSuffix}.`);
     }
   } finally {
     lock.release();
