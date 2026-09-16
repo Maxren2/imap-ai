@@ -26,18 +26,28 @@ export interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   soon?: boolean;
+  // inbox-zero groups its real sidebar nav under labeled sections
+  // ("Manage", "Cleanup", a collapsible "Tools") -- confirmed live in
+  // DESIGN.md section 33/36. imap-ai's feature set doesn't map onto its
+  // exact groups (no Channels, Calendars, or Attachments pages), so this
+  // is an adapted two-group split rather than a literal copy: Inbox stays
+  // ungrouped at the top (the sidebar-less Mail layout doesn't even show
+  // this sidebar, so there's no real inbox-zero equivalent to match here
+  // either way), everything conversational under "Manage", everything
+  // inbox-cleanup-flavored under "Cleanup".
+  group?: "manage" | "cleanup";
 }
 
 export const navItems: NavItem[] = [
   { title: "Inbox", href: "/", icon: Inbox },
-  { title: "Chat", href: "/chat", icon: MessageCircle },
-  { title: "Assistant", href: "/rules", icon: Sparkles },
-  { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX },
-  { title: "Bulk Archive", href: "/bulk-archive", icon: Archive },
-  { title: "No-Reply", href: "/no-reply", icon: Hourglass },
-  { title: "Cold Email Blocker", href: "/cold-email-blocker", icon: ShieldOff },
-  { title: "Deep Clean", href: "/deep-clean", icon: Brush },
-  { title: "Analytics", href: "/stats", icon: BarChart3 },
+  { title: "Chat", href: "/chat", icon: MessageCircle, group: "manage" },
+  { title: "Assistant", href: "/rules", icon: Sparkles, group: "manage" },
+  { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX, group: "cleanup" },
+  { title: "Bulk Archive", href: "/bulk-archive", icon: Archive, group: "cleanup" },
+  { title: "No-Reply", href: "/no-reply", icon: Hourglass, group: "cleanup" },
+  { title: "Cold Email Blocker", href: "/cold-email-blocker", icon: ShieldOff, group: "cleanup" },
+  { title: "Deep Clean", href: "/deep-clean", icon: Brush, group: "cleanup" },
+  { title: "Analytics", href: "/stats", icon: BarChart3, group: "cleanup" },
 ];
 
 function DarkModeToggle() {
@@ -63,46 +73,66 @@ function DarkModeToggle() {
   );
 }
 
+function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
+  return (
+    <SidebarMenu>
+      {items.map((item) => {
+        const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        return (
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton asChild isActive={isActive} disabled={item.soon} tooltip={item.title}>
+              {item.soon ? (
+                <span className={cn("cursor-default opacity-60")}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </span>
+              ) : (
+                <Link href={item.href}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </Link>
+              )}
+            </SidebarMenuButton>
+            {item.soon && <SidebarMenuBadge>Soon</SidebarMenuBadge>}
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const ungrouped = navItems.filter((item) => !item.group);
+  const manageItems = navItems.filter((item) => item.group === "manage");
+  const cleanupItems = navItems.filter((item) => item.group === "cleanup");
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <Link href="/" className="flex items-center gap-2 px-2 py-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
             i
           </div>
           <span className="font-semibold group-data-[collapsible=icon]:hidden">imap-ai</span>
-        </div>
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Mail</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={isActive} disabled={item.soon} tooltip={item.title}>
-                      {item.soon ? (
-                        <span className={cn("cursor-default opacity-60")}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </span>
-                      ) : (
-                        <Link href={item.href}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      )}
-                    </SidebarMenuButton>
-                    {item.soon && <SidebarMenuBadge>Soon</SidebarMenuBadge>}
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
+            <NavItems items={ungrouped} pathname={pathname} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Manage</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <NavItems items={manageItems} pathname={pathname} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Cleanup</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <NavItems items={cleanupItems} pathname={pathname} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
