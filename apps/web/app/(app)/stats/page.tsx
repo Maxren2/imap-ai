@@ -1,4 +1,3 @@
-import { prisma } from "@imap-ai/core/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getVolumeOverTime, getTopSenders, getRuleStats, getCategoryBreakdown, getSenderCategories } from "./queries";
 import { VolumeChart } from "./VolumeChart";
@@ -6,15 +5,16 @@ import { TopSendersChart } from "./TopSendersChart";
 import { RuleStatsChart } from "./RuleStatsChart";
 import { CategoryChart } from "./CategoryChart";
 import { SenderCategoryTable } from "./SenderCategoryTable";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
   const [volume, topSenders, ruleStats, categories, senderCategories] = await Promise.all([
-    getVolumeOverTime(),
-    getTopSenders(10),
-    getRuleStats(),
+    getVolumeOverTime(account.id),
+    getTopSenders(account.id, 10),
+    getRuleStats(account.id),
     getCategoryBreakdown(account.id),
     getSenderCategories(account.id),
   ]);

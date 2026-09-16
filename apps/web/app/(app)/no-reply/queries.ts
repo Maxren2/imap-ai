@@ -21,16 +21,17 @@ export interface NoReplyThread {
  * on stats/queries.ts's getVolumeOverTime for why a single backslash
  * silently breaks this (cooks away to 'Sent', matching nothing).
  */
-export async function getNoReplyThreads(limit = 50): Promise<NoReplyThread[]> {
+export async function getNoReplyThreads(accountId: string, limit = 50): Promise<NoReplyThread[]> {
   const rows = await prisma.$queryRaw<
     { id: string; subject: string | null; toAddress: string | null; toName: string | null; date: Date }[]
   >`
     SELECT id, subject, "toAddress", "toName", date
     FROM (
-      SELECT DISTINCT ON ("gmailThreadId") id, subject, "toAddress", "toName", date, labels
+      SELECT DISTINCT ON ("Message"."gmailThreadId") "Message".id, subject, "toAddress", "toName", date, labels
       FROM "Message"
-      WHERE "gmailThreadId" IS NOT NULL
-      ORDER BY "gmailThreadId", date DESC
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "gmailThreadId" IS NOT NULL AND "Mailbox"."accountId" = ${accountId}
+      ORDER BY "Message"."gmailThreadId", date DESC
     ) latest
     WHERE '\\Sent' = ANY(labels)
     ORDER BY date DESC

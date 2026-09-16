@@ -1,8 +1,8 @@
 import { prisma } from "@imap-ai/core/db";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export async function getColdEmailRule() {
-  const account = await prisma.account.findFirst();
-  if (!account) return null;
+  const account = await getActiveEmailAccount();
   return prisma.rule.findUnique({
     where: { accountId_systemType: { accountId: account.id, systemType: "COLD_EMAIL" } },
   });
@@ -76,8 +76,9 @@ export interface RecentMessageRow {
 
 /** For the Test tab -- pick a real recent message to preview the AI verdict on. */
 export async function getRecentInboxMessages(limit = 20): Promise<RecentMessageRow[]> {
+  const account = await getActiveEmailAccount();
   const messages = await prisma.message.findMany({
-    where: { inInbox: true },
+    where: { inInbox: true, mailbox: { accountId: account.id } },
     orderBy: { date: "desc" },
     take: limit,
     select: { id: true, fromAddress: true, fromName: true, subject: true, date: true },

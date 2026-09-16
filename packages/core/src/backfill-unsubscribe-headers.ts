@@ -1,5 +1,6 @@
 import "./env.js";
-import { connectImap, requireEnv } from "./imap-connect.js";
+import { connectAccountImap } from "./mail-provider.js";
+import { resolveAccounts } from "./account-scope.js";
 import { prisma } from "./db.js";
 import { parseUnsubscribeHeaders } from "./unsubscribe.js";
 import { sleep } from "./sleep.js";
@@ -13,18 +14,18 @@ const UNSUBSCRIBE_HEADERS = ["list-unsubscribe", "list-unsubscribe-post"];
  * before that started happening automatically (see mailbox-sync.ts).
  * Header-only fetches are cheap, so this runs in larger, faster batches
  * than the body backfill. Safe to interrupt and re-run: only processes
- * messages where unsubscribeHeadersFetchedAt is still null.
+ * messages where unsubscribeHeadersFetchedAt is still null. Loops over
+ * every linked account, each over its own IMAP connection.
  */
-async function main() {
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+async function backfillAccount(account: Awaited<ReturnType<typeof resolveAccounts>>[number]): Promise<void> {
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   let totalProcessed = 0;
   try {
     while (true) {
       const batch = await prisma.message.findMany({
-        where: { unsubscribeHeadersFetchedAt: null },
+        where: { unsubscribeHeadersFetchedAt: null, mailbox: { accountId: account.id } },
         select: { id: true, uid: true },
         take: BATCH_SIZE,
       });
@@ -58,7 +59,7 @@ async function main() {
         data: { unsubscribeHeadersFetchedAt: new Date() },
       });
 
-      console.log(`Backfilled unsubscribe headers for ${totalProcessed} message(s) so far...`);
+      console.log(`  [${account.email}] Backfilled unsubscribe headers for ${totalProcessed} message(s) so far...`);
       await sleep(PACE_MS);
     }
   } finally {
@@ -66,7 +67,27 @@ async function main() {
     await client.logout();
   }
 
-  console.log(`Done. Total processed: ${totalProcessed}.`);
+  console.log(`  [${account.email}] Done. Total processed: ${totalProcessed}.`);
+}
+
+async function main() {
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
+
+  let anyFailed = false;
+  for (const account of accounts) {
+    console.log(`Backfilling unsubscribe headers for ${account.email}...`);
+    try {
+      await backfillAccount(account);
+    } catch (error) {
+      anyFailed = true;
+      console.error(`  backfill-unsubscribe-headers failed for ${account.email}:`, error);
+    }
+  }
+  if (anyFailed) process.exitCode = 1;
 }
 
 main()

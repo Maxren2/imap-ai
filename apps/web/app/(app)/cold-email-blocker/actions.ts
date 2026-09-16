@@ -1,10 +1,11 @@
 "use server";
 
 import { prisma } from "@imap-ai/core/db";
-import { connectImap, requireEnv } from "@imap-ai/core/imap-connect";
+import { connectAccountImap } from "@imap-ai/core/mail-provider";
 import { ensureMessageBody } from "@imap-ai/core/body";
 import { resolveOllamaConfig, evaluateAiPrompt } from "@imap-ai/core/ai/ollama";
 import { revalidatePath } from "next/cache";
+import { getActiveEmailAccount } from "@/lib/session";
 
 /**
  * Creates the Cold Email Blocker rule on first visit, same as
@@ -13,7 +14,7 @@ import { revalidatePath } from "next/cache";
  * a form action to resolve to void.
  */
 export async function setUpColdEmailBlocker(): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
 
   const existing = await prisma.rule.findUnique({
     where: { accountId_systemType: { accountId: account.id, systemType: "COLD_EMAIL" } },
@@ -44,7 +45,7 @@ export async function setUpColdEmailBlocker(): Promise<void> {
  * forward too (see queries.ts's getColdEmails).
  */
 export async function markNotCold(fromAddress: string): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
   await prisma.coldEmailException.upsert({
     where: { accountId_senderAddress: { accountId: account.id, senderAddress: fromAddress } },
     update: {},
@@ -54,7 +55,7 @@ export async function markNotCold(fromAddress: string): Promise<void> {
 }
 
 export async function unmarkNotCold(fromAddress: string): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
   await prisma.coldEmailException.deleteMany({ where: { accountId: account.id, senderAddress: fromAddress } });
   revalidatePath("/cold-email-blocker");
 }
@@ -65,19 +66,19 @@ export interface TestResult {
 
 /** Runs the cold-email prompt against one real message, on demand -- doesn't record a match either way. */
 export async function testColdEmail(messageId: string): Promise<TestResult> {
-  const rule = await prisma.rule.findFirst({ where: { systemType: "COLD_EMAIL" } });
+  const account = await getActiveEmailAccount();
+  const rule = await prisma.rule.findFirst({ where: { systemType: "COLD_EMAIL", accountId: account.id } });
   if (!rule?.aiPrompt) throw new Error("Cold Email Blocker isn't set up yet.");
 
   const ollamaConfig = resolveOllamaConfig();
   if (!ollamaConfig) throw new Error("OLLAMA_BASE_URL/OLLAMA_MODEL aren't configured.");
 
-  const message = await prisma.message.findUniqueOrThrow({
-    where: { id: messageId },
+  const message = await prisma.message.findFirstOrThrow({
+    where: { id: messageId, mailbox: { accountId: account.id } },
     select: { id: true, uid: true, subject: true, fromAddress: true, fromName: true, bodyText: true, bodyFetchedAt: true },
   });
 
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
   let body: string | null;
   try {

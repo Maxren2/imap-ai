@@ -1,8 +1,10 @@
 import "./env.js";
 import { prisma } from "./db.js";
-import { connectImap, requireEnv } from "./imap-connect.js";
+import { connectAccountImap } from "./mail-provider.js";
+import { resolveAccounts } from "./account-scope.js";
 import { applyRuleActions, type RuleAction } from "./rules/actions.js";
 import { RECEIPT_PATTERN } from "./text-patterns.js";
+import type { EmailAccount } from "./generated/prisma/index.js";
 
 /**
  * Deterministic-only port of inbox-zero's real "Deep Clean" (researched
@@ -28,10 +30,14 @@ import { RECEIPT_PATTERN } from "./text-patterns.js";
  * app doesn't track attachment presence at sync time, and checking it
  * live per-candidate would mean a BODYSTRUCTURE fetch per message, adding
  * real latency to every run; a known, documented gap, not an oversight.
+ *
+ * Triggered from the web UI always with ACCOUNT_ID set (see
+ * deep-clean/actions.ts), so it only ever touches the account the user
+ * was actually looking at. A bare CLI invocation with no ACCOUNT_ID runs
+ * the same options against every linked account, same as every other
+ * multi-account script -- worth knowing before running it manually.
  */
-async function main() {
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-
+async function deepCleanAccount(account: EmailAccount): Promise<void> {
   const action = process.env.DEEP_CLEAN_ACTION === "markRead" ? "markRead" : "archive";
   const olderThanDaysRaw = process.env.DEEP_CLEAN_OLDER_THAN_DAYS;
   const olderThanDays = olderThanDaysRaw && olderThanDaysRaw !== "all" ? Number(olderThanDaysRaw) : null;
@@ -44,6 +50,7 @@ async function main() {
   const candidates = await prisma.message.findMany({
     where: {
       inInbox: true,
+      mailbox: { accountId: account.id },
       ...(cutoff ? { date: { lt: cutoff } } : {}),
     },
     select: { id: true, uid: true, subject: true, fromAddress: true, flags: true, labels: true },
@@ -60,15 +67,15 @@ async function main() {
   });
 
   console.log(
-    `Deep Clean: ${candidates.length} candidate(s) older than ${olderThanDays ?? "any age"} day(s), ${targets.length} after skip filters (action: ${action}).`,
+    `[${account.email}] Deep Clean: ${candidates.length} candidate(s) older than ${olderThanDays ?? "any age"} day(s), ${targets.length} after skip filters (action: ${action}).`,
   );
 
   if (targets.length === 0) {
-    console.log("Nothing to do.");
+    console.log(`  [${account.email}] Nothing to do.`);
     return;
   }
 
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   const ruleAction: RuleAction = action === "archive" ? { type: "archive" } : { type: "markRead" };
@@ -83,9 +90,9 @@ async function main() {
           await prisma.message.update({ where: { id: message.id }, data: { inInbox: false } });
         }
         applied++;
-        if (applied % 25 === 0) console.log(`...${applied}/${targets.length} done`);
+        if (applied % 25 === 0) console.log(`  [${account.email}] ...${applied}/${targets.length} done`);
       } catch (error) {
-        console.error(`Failed on "${message.subject}":`, error instanceof Error ? error.message : error);
+        console.error(`  [${account.email}] Failed on "${message.subject}":`, error instanceof Error ? error.message : error);
         failed++;
       }
     }
@@ -94,7 +101,26 @@ async function main() {
     await client.logout();
   }
 
-  console.log(`Deep Clean complete: ${applied} processed${failed > 0 ? `, ${failed} failed` : ""}.`);
+  console.log(`  [${account.email}] Deep Clean complete: ${applied} processed${failed > 0 ? `, ${failed} failed` : ""}.`);
+}
+
+async function main() {
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
+
+  let anyFailed = false;
+  for (const account of accounts) {
+    try {
+      await deepCleanAccount(account);
+    } catch (error) {
+      anyFailed = true;
+      console.error(`deep-clean failed for ${account.email}:`, error);
+    }
+  }
+  if (anyFailed) process.exitCode = 1;
 }
 
 main()

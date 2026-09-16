@@ -17,7 +17,11 @@
     "./unsubscribe": "./src/unsubscribe.ts",
     "./body": "./src/body.ts",
     "./ai/ollama": "./src/ai/ollama.ts",
-    "./text-patterns": "./src/text-patterns.ts"
+    "./text-patterns": "./src/text-patterns.ts",
+    "./crypto": "./src/crypto.ts",
+    "./mail-provider": "./src/mail-provider.ts",
+    "./microsoft-oauth": "./src/microsoft-oauth.ts",
+    "./account-scope": "./src/account-scope.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",
@@ -33,6 +37,7 @@
     "rules:seed-basic": "tsx src/rules/seed-basic-rules.ts",
     "rules:seed-cold-email": "tsx src/rules/seed-cold-email.ts",
     "deep-clean": "tsx src/deep-clean.ts",
+    "migrate-legacy-account": "tsx src/migrate-legacy-account.ts",
     "db:up": "docker compose -f ../../docker-compose.yml up -d postgres",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "generate": "prisma generate",
@@ -40,6 +45,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
     "google-auth-library": "^9.14.1",
     "imapflow": "^1.0.171",
@@ -48,6 +54,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/mailparser": "^3.4.4",
     "@types/node": "^22.7.4",
     "dotenv-cli": "^7.4.2",

@@ -1,5 +1,6 @@
 import "./env.js";
-import { connectImap, requireEnv } from "./imap-connect.js";
+import { connectAccountImap } from "./mail-provider.js";
+import { resolveAccounts } from "./account-scope.js";
 import { prisma } from "./db.js";
 import { sleep } from "./sleep.js";
 
@@ -13,6 +14,8 @@ const PACE_MS = 300;
  * on a sent message is our own address, not who we sent it to. Only sent
  * messages are in scope (not the whole mailbox): "\Sent" must be in
  * `labels`. Envelope-only fetches are cheap, similar to header-only ones.
+ * Loops over every linked account -- each account's messages are only
+ * reachable over that account's own IMAP connection.
  *
  * A message whose envelope genuinely has no "to" (rare, e.g. BCC-only) is
  * written as an empty string rather than left null, so `toAddress IS NULL`
@@ -20,16 +23,15 @@ const PACE_MS = 300;
  * checked regardless of outcome" idea as the unsubscribe-headers backfill,
  * just via a sentinel value instead of a separate timestamp column.
  */
-async function main() {
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+async function backfillAccount(account: Awaited<ReturnType<typeof resolveAccounts>>[number]): Promise<void> {
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   let totalProcessed = 0;
   try {
     while (true) {
       const batch = await prisma.message.findMany({
-        where: { toAddress: null, labels: { has: "\\Sent" } },
+        where: { toAddress: null, labels: { has: "\\Sent" }, mailbox: { accountId: account.id } },
         select: { id: true, uid: true },
         take: BATCH_SIZE,
       });
@@ -56,7 +58,7 @@ async function main() {
         data: { toAddress: "" },
       });
 
-      console.log(`Backfilled recipient for ${totalProcessed} sent message(s) so far...`);
+      console.log(`  [${account.email}] Backfilled recipient for ${totalProcessed} sent message(s) so far...`);
       await sleep(PACE_MS);
     }
   } finally {
@@ -64,7 +66,27 @@ async function main() {
     await client.logout();
   }
 
-  console.log(`Done. Total processed: ${totalProcessed}.`);
+  console.log(`  [${account.email}] Done. Total processed: ${totalProcessed}.`);
+}
+
+async function main() {
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
+
+  let anyFailed = false;
+  for (const account of accounts) {
+    console.log(`Backfilling to-address for ${account.email}...`);
+    try {
+      await backfillAccount(account);
+    } catch (error) {
+      anyFailed = true;
+      console.error(`  backfill-to-address failed for ${account.email}:`, error);
+    }
+  }
+  if (anyFailed) process.exitCode = 1;
 }
 
 main()

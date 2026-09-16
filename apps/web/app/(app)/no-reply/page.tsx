@@ -1,5 +1,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getNoReplyThreads } from "./queries";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,8 @@ function formatDate(iso: string): string {
 }
 
 export default async function NoReplyPage() {
-  const threads = await getNoReplyThreads();
+  const account = await getActiveEmailAccount();
+  const threads = await getNoReplyThreads(account.id);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">

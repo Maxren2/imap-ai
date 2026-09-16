@@ -28,14 +28,15 @@ export interface VolumeDay {
  * a raw SQL COUNT(*) against a known-correct number, not by a chart
  * "looking plausible" -- see DESIGN.md's phase-9 write-up.
  */
-export async function getVolumeOverTime(): Promise<VolumeDay[]> {
+export async function getVolumeOverTime(accountId: string): Promise<VolumeDay[]> {
   const rows = await prisma.$queryRaw<{ day: Date; received: bigint; sent: bigint }[]>`
     SELECT
       date_trunc('day', date) AS day,
       COUNT(*) FILTER (WHERE NOT ('\\Sent' = ANY(labels))) AS received,
       COUNT(*) FILTER (WHERE '\\Sent' = ANY(labels)) AS sent
     FROM "Message"
-    WHERE date >= NOW() - INTERVAL '90 days'
+    JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+    WHERE date >= NOW() - INTERVAL '90 days' AND "Mailbox"."accountId" = ${accountId}
     GROUP BY day
     ORDER BY day ASC
   `;
@@ -54,14 +55,15 @@ export interface TopSenderRow {
 }
 
 /** Top senders by message count, excluding the account's own sent mail. */
-export async function getTopSenders(limit = 10): Promise<TopSenderRow[]> {
+export async function getTopSenders(accountId: string, limit = 10): Promise<TopSenderRow[]> {
   const rows = await prisma.$queryRaw<{ fromAddress: string; fromName: string | null; count: bigint }[]>`
     SELECT
       "fromAddress",
       (ARRAY_AGG("fromName" ORDER BY date DESC))[1] AS "fromName",
       COUNT(*) AS count
     FROM "Message"
-    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels))
+    JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels)) AND "Mailbox"."accountId" = ${accountId}
     GROUP BY "fromAddress"
     ORDER BY count DESC
     LIMIT ${limit}
@@ -75,8 +77,9 @@ export interface RuleStatRow {
   matchCount: number;
 }
 
-export async function getRuleStats(): Promise<RuleStatRow[]> {
+export async function getRuleStats(accountId: string): Promise<RuleStatRow[]> {
   const rules = await prisma.rule.findMany({
+    where: { accountId },
     select: { name: true, _count: { select: { matches: true } } },
     orderBy: { name: "asc" },
   });
@@ -97,7 +100,7 @@ interface SenderAggRow {
   hasUnsubscribe: boolean;
 }
 
-async function getSenderAggRows(): Promise<SenderAggRow[]> {
+async function getSenderAggRows(accountId: string): Promise<SenderAggRow[]> {
   return prisma.$queryRaw<SenderAggRow[]>`
     SELECT
       "fromAddress",
@@ -106,7 +109,8 @@ async function getSenderAggRows(): Promise<SenderAggRow[]> {
       COUNT(*) AS "messageCount",
       BOOL_OR("listUnsubscribeUrl" IS NOT NULL OR "listUnsubscribeMailto" IS NOT NULL) AS "hasUnsubscribe"
     FROM "Message"
-    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels))
+    JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+    WHERE "fromAddress" IS NOT NULL AND NOT ('\\Sent' = ANY(labels)) AND "Mailbox"."accountId" = ${accountId}
     GROUP BY "fromAddress"
     ORDER BY "messageCount" DESC
     LIMIT 300
@@ -138,7 +142,7 @@ async function getOverridesMap(accountId: string): Promise<Map<string, SenderCat
  * breakdown chart, and keeps this query cheap.
  */
 export async function getCategoryBreakdown(accountId: string): Promise<CategoryBreakdownRow[]> {
-  const [rows, overrides] = await Promise.all([getSenderAggRows(), getOverridesMap(accountId)]);
+  const [rows, overrides] = await Promise.all([getSenderAggRows(accountId), getOverridesMap(accountId)]);
 
   const totals = new Map<SenderCategory, { senderCount: number; messageCount: number }>(
     SENDER_CATEGORIES.map((category) => [category, { senderCount: 0, messageCount: 0 }]),
@@ -178,7 +182,7 @@ export interface SenderCategoryRow {
  * guess" at a glance.
  */
 export async function getSenderCategories(accountId: string, limit = 50): Promise<SenderCategoryRow[]> {
-  const [rows, overrides] = await Promise.all([getSenderAggRows(), getOverridesMap(accountId)]);
+  const [rows, overrides] = await Promise.all([getSenderAggRows(accountId), getOverridesMap(accountId)]);
 
   return rows.slice(0, limit).map((row) => {
     const override = overrides.get(row.fromAddress);

@@ -3,18 +3,23 @@
 import { prisma } from "@imap-ai/core/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export async function createChat(): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
   const chat = await prisma.chat.create({ data: { accountId: account.id } });
   revalidatePath("/chat");
   redirect(`/chat/${chat.id}`);
 }
 
 export async function renameChat(formData: FormData): Promise<void> {
+  const account = await getActiveEmailAccount();
   const chatId = formData.get("chatId") as string;
   const name = (formData.get("name") as string | null)?.trim() || null;
-  await prisma.chat.update({ where: { id: chatId }, data: { name } });
+  // updateMany (not update) so a chatId belonging to a different account
+  // just silently matches zero rows instead of throwing or, worse,
+  // updating someone else's chat.
+  await prisma.chat.updateMany({ where: { id: chatId, accountId: account.id }, data: { name } });
   revalidatePath("/chat");
 }
 
@@ -33,8 +38,8 @@ export async function renameChat(formData: FormData): Promise<void> {
  * loaded correctly at its real URL. A single redirect avoids the issue.
  */
 export async function deleteChat(chatId: string, wasActive: boolean): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
-  await prisma.chat.delete({ where: { id: chatId } });
+  const account = await getActiveEmailAccount();
+  await prisma.chat.deleteMany({ where: { id: chatId, accountId: account.id } });
   revalidatePath("/chat");
 
   if (!wasActive) return;

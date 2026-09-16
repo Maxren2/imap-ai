@@ -4,6 +4,7 @@ import { prisma } from "@imap-ai/core/db";
 import { RECEIPT_PATTERN } from "@imap-ai/core/text-patterns";
 import { runNpmScript, getLatestBackgroundRuns } from "@/lib/background-run";
 import type { BackgroundRunRow } from "@/lib/background-run";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export interface DeepCleanOptions {
   action: "archive" | "markRead";
@@ -26,10 +27,13 @@ function cutoffFor(olderThanDays: number | null): Date | null {
  * count is never a promise the real run doesn't keep.
  */
 export async function previewDeepClean(options: DeepCleanOptions): Promise<number> {
+  const account = await getActiveEmailAccount();
   const cutoff = cutoffFor(options.olderThanDays);
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) as count FROM "Message"
+    JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
     WHERE "inInbox" = true
+      AND "Mailbox"."accountId" = ${account.id}
       AND (${cutoff}::timestamp IS NULL OR date < ${cutoff}::timestamp)
       AND NOT (${options.skipStarred} AND '\\Flagged' = ANY(flags))
       AND NOT (${options.skipSent} AND '\\Sent' = ANY(labels))
@@ -42,7 +46,8 @@ export async function previewDeepClean(options: DeepCleanOptions): Promise<numbe
 }
 
 export async function triggerDeepClean(options: DeepCleanOptions): Promise<void> {
-  await runNpmScript("deep-clean", "deep-clean", "/deep-clean", {
+  const account = await getActiveEmailAccount();
+  await runNpmScript("deep-clean", "deep-clean", "/deep-clean", account.id, {
     DEEP_CLEAN_ACTION: options.action,
     DEEP_CLEAN_OLDER_THAN_DAYS: options.olderThanDays === null ? "all" : String(options.olderThanDays),
     DEEP_CLEAN_SKIP_STARRED: String(options.skipStarred),
@@ -54,5 +59,6 @@ export async function triggerDeepClean(options: DeepCleanOptions): Promise<void>
 export type { BackgroundRunRow };
 
 export async function getLatestDeepCleanRuns(): Promise<BackgroundRunRow[]> {
-  return getLatestBackgroundRuns(["deep-clean"]);
+  const account = await getActiveEmailAccount();
+  return getLatestBackgroundRuns(account.id, ["deep-clean"]);
 }

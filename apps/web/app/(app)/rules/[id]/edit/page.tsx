@@ -1,12 +1,14 @@
 import { prisma } from "@imap-ai/core/db";
 import { notFound } from "next/navigation";
 import { RuleForm } from "../../RuleForm";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditRulePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const rule = await prisma.rule.findUnique({ where: { id } });
+  const account = await getActiveEmailAccount();
+  const rule = await prisma.rule.findFirst({ where: { id, accountId: account.id } });
   if (!rule) notFound();
 
   return (

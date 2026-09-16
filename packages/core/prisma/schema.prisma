@@ -8,18 +8,60 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Account {
-  id        String    @id @default(cuid())
-  email     String    @unique
+// A person who can sign in. Deliberately minimal -- password auth only
+// (see apps/web/auth.ts), no session/OAuth-provider tables of our own:
+// Auth.js runs in JWT mode here, so it needs no adapter and no schema of
+// its own. One User can link any number of EmailAccounts across providers.
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  createdAt     DateTime       @default(now())
+  emailAccounts EmailAccount[]
+}
+
+// A single linked mailbox. Named EmailAccount (not Account) to keep "a
+// person who signs in" (User) and "a mailbox someone connected" clearly
+// separate -- also avoids colliding with Auth.js's own Account model, even
+// though this project doesn't use Auth.js's adapter/table set at all.
+//
+// Credential storage differs by provider: gmail/outlook use OAuth (a
+// refresh token, encrypted -- see packages/core/src/crypto.ts), imap uses
+// a plain username/password against a caller-supplied host (also
+// encrypted). Exactly one credential shape is populated per row, chosen by
+// `provider`; enforced in application code, not the schema, same as this
+// project's other "tagged union stored as nullable columns" fields
+// (Rule.conditions/aiPrompt, etc.).
+model EmailAccount {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  // "gmail" | "outlook" | "imap" -- plain string (validated in code), same
+  // reasoning as Rule.systemType/SenderStatus.status.
   provider  String
-  createdAt DateTime  @default(now())
-  mailboxes Mailbox[]
-  rules     Rule[]
-  senderStatuses SenderStatus[]
-  coldEmailExceptions ColdEmailException[]
-  backgroundRuns BackgroundRun[]
-  chats     Chat[]
+  createdAt DateTime @default(now())
+
+  // gmail / outlook (OAuth, XOAUTH2)
+  oauthRefreshTokenEnc String?
+
+  // imap (generic provider, plain LOGIN auth)
+  imapHost        String?
+  imapPort        Int?
+  imapUser        String?
+  imapPasswordEnc String?
+  smtpHost        String?
+  smtpPort        Int?
+
+  mailboxes               Mailbox[]
+  rules                   Rule[]
+  senderStatuses          SenderStatus[]
+  coldEmailExceptions     ColdEmailException[]
+  backgroundRuns          BackgroundRun[]
+  chats                   Chat[]
   senderCategoryOverrides SenderCategoryOverride[]
+
+  @@unique([userId, email])
 }
 
 // Tracks a detached background process spawned from the web UI (currently
@@ -31,23 +73,23 @@ model Account {
 // modest output volume these scripts produce, and avoids any read-modify-
 // write race since only the one spawning process ever writes a given row.
 model BackgroundRun {
-  id         String    @id @default(cuid())
+  id         String       @id @default(cuid())
   accountId  String
-  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   // "rules:run" | "rules:apply-actions" -- a plain string (validated in
   // code), not a Prisma enum, same reasoning as SenderStatus.status.
   kind       String
   // "running" | "succeeded" | "failed"
-  status     String    @default("running")
-  log        String    @default("")
-  startedAt  DateTime  @default(now())
+  status     String       @default("running")
+  log        String       @default("")
+  startedAt  DateTime     @default(now())
   finishedAt DateTime?
 }
 
 model Chat {
   id        String        @id @default(cuid())
   accountId String
-  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account   EmailAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   // Null until the user renames the thread, or the first user message
   // auto-titles it (see apps/web/app/api/chat/route.ts) -- inbox-zero's real
   // chat history falls back to a date-based label in this case rather than
@@ -64,7 +106,7 @@ model ChatMessage {
   id        String   @id @default(cuid())
   chatId    String
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  role      String   // "user" | "assistant" | "system"
+  role      String // "user" | "assistant" | "system"
   // AI SDK UIMessage `parts` array (text/tool-call/tool-result parts),
   // stored as-is rather than flattened to a plain string -- that's what
   // the frontend needs back to re-render tool cards on reload.
@@ -75,44 +117,44 @@ model ChatMessage {
 }
 
 model Mailbox {
-  id          String    @id @default(cuid())
-  accountId   String
-  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name        String
-  uidValidity BigInt
-  lastSeenUid Int       @default(0)
+  id                String       @id @default(cuid())
+  accountId         String
+  account           EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name              String
+  uidValidity       BigInt
+  lastSeenUid       Int          @default(0)
   // Marks the sync-window boundary from a date-bounded first sync (see
   // SYNC_BACKFILL_DAYS): everything with uid <= this value has NOT been
   // synced yet. Null once there's nothing left to backfill.
   backfillBeforeUid Int?
-  fullyBackfilled   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  messages    Message[]
+  fullyBackfilled   Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  messages          Message[]
 
   @@unique([accountId, name])
 }
 
 model Message {
-  id             String      @id @default(cuid())
-  mailboxId      String
-  mailbox        Mailbox     @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
-  uid            Int
-  gmailThreadId  String?
-  gmailMessageId String?
-  subject        String?
-  fromAddress    String?
-  fromName       String?
+  id                          String             @id @default(cuid())
+  mailboxId                   String
+  mailbox                     Mailbox            @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  uid                         Int
+  gmailThreadId               String?
+  gmailMessageId              String?
+  subject                     String?
+  fromAddress                 String?
+  fromName                    String?
   // Only meaningfully populated for messages we sent (the IMAP envelope's
   // "to" address) -- used by the No-Reply feature to show who a sent
   // message went to, since `fromAddress` on a sent message is our own
   // address, not the recipient's. Not backfilled for existing sent mail by
   // a normal incremental sync (which only fetches UIDs newer than the last
   // seen one) -- see `npm run backfill-to-address` for that.
-  toAddress      String?
-  toName         String?
-  date           DateTime
-  flags          String[]
-  labels         String[]
+  toAddress                   String?
+  toName                      String?
+  date                        DateTime
+  flags                       String[]
+  labels                      String[]
   // Tracked explicitly rather than derived from `labels` -- Gmail's
   // X-GM-LABELS response omits "\Inbox" when a message is fetched from
   // within the INBOX mailbox itself (confirmed live: only present when
@@ -121,12 +163,12 @@ model Message {
   // true on sync (it came from INBOX); set false by our own archive
   // actions. Doesn't detect an archive done outside this app (e.g.
   // directly in Gmail) -- only reflects actions this app took.
-  inInbox        Boolean     @default(true)
+  inInbox                     Boolean            @default(true)
   // Lazily fetched -- null/unset until something actually needs body
   // content (an AI rule prompt, e.g.). bodyFetchedAt is set even on a
   // fetch that finds no text part, so we don't keep retrying it forever.
-  bodyText       String?
-  bodyFetchedAt  DateTime?
+  bodyText                    String?
+  bodyFetchedAt               DateTime?
   // Parsed from the List-Unsubscribe/List-Unsubscribe-Post headers (fetched
   // as part of the regular sync -- header-only fetches are cheap, unlike
   // bodies). listUnsubscribeOneClick means the sender supports RFC 8058
@@ -135,13 +177,13 @@ model Message {
   // click or a sent email. unsubscribeHeadersFetchedAt is set even when no
   // header is present, so backfill-unsubscribe-headers doesn't retry
   // messages that genuinely have none forever.
-  listUnsubscribeUrl         String?
-  listUnsubscribeMailto      String?
-  listUnsubscribeOneClick    Boolean     @default(false)
+  listUnsubscribeUrl          String?
+  listUnsubscribeMailto       String?
+  listUnsubscribeOneClick     Boolean            @default(false)
   unsubscribeHeadersFetchedAt DateTime?
-  createdAt      DateTime    @default(now())
-  ruleMatches    RuleMatch[]
-  ruleAiEvaluations RuleAiEvaluation[]
+  createdAt                   DateTime           @default(now())
+  ruleMatches                 RuleMatch[]
+  ruleAiEvaluations           RuleAiEvaluation[]
 
   @@unique([mailboxId, uid])
   @@index([gmailThreadId])
@@ -152,15 +194,15 @@ model Message {
 // Message since "unsubscribed" is a decision this app recorded, not
 // something observable from synced mail alone.
 model SenderStatus {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   accountId     String
-  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account       EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   senderAddress String
   // "unhandled" | "unsubscribed" -- kept as a plain string (validated in
   // code) rather than a Prisma enum, so adding a status later doesn't need
   // a migration.
-  status        String   @default("unhandled")
-  updatedAt     DateTime @updatedAt
+  status        String       @default("unhandled")
+  updatedAt     DateTime     @updatedAt
 
   @@unique([accountId, senderAddress])
 }
@@ -174,12 +216,12 @@ model SenderStatus {
 // load). Same small-dedicated-table pattern as SenderStatus/
 // ColdEmailException above rather than a generic per-sender metadata blob.
 model SenderCategoryOverride {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   accountId     String
-  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account       EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   senderAddress String
   category      String
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime     @updatedAt
 
   @@unique([accountId, senderAddress])
 }
@@ -192,21 +234,21 @@ model SenderCategoryOverride {
 // there's no "confirmed cold" counterpart yet (a RuleMatch on the
 // cold-email Rule already covers that).
 model ColdEmailException {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   accountId     String
-  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account       EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   senderAddress String
-  createdAt     DateTime @default(now())
+  createdAt     DateTime     @default(now())
 
   @@unique([accountId, senderAddress])
 }
 
 model Rule {
-  id         String      @id @default(cuid())
-  accountId  String
-  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name       String
-  enabled    Boolean     @default(true)
+  id                  String             @id @default(cuid())
+  accountId           String
+  account             EmailAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name                String
+  enabled             Boolean            @default(true)
   // Marks a rule as owning a built-in feature (currently just
   // "COLD_EMAIL") so that feature can find its rule reliably instead of by
   // name -- a plain string (validated in code), not a Prisma enum, for the
@@ -214,7 +256,7 @@ model Rule {
   // Postgres unique constraint treats multiple NULLs as distinct, so
   // ordinary user-created rules (systemType left unset) never collide with
   // each other, only a second attempt at the same system type would.
-  systemType String?
+  systemType          String?
   // RuleCondition[] (see packages/core/src/rules/types.ts) -- ALL conditions
   // within this array always AND together (matching inbox-zero's own real
   // model, confirmed from its source: its static from/to/subject/body
@@ -223,10 +265,10 @@ model Rule {
   // Stored as JSON rather than normalized rows since there's no UI need
   // for the extra join complexity. At least one of conditions/aiPrompt
   // must be set (enforced in application code).
-  conditions Json?
+  conditions          Json?
   // Natural-language condition evaluated via a local LLM (see
   // packages/core/src/ai/ollama.ts).
-  aiPrompt   String?
+  aiPrompt            String?
   // How `conditions` and `aiPrompt` combine when both are set (ignored
   // when only one is set) -- "AND" (default): conditions act as a cheap
   // pre-filter, aiPrompt only runs on what already passed (the original,
@@ -236,27 +278,27 @@ model Rule {
   // still checked against aiPrompt, since OR means either side alone is
   // enough. Plain string, not a Prisma enum, for the same reason
   // SenderStatus.status/Rule.systemType are.
-  conditionalOperator String @default("AND")
+  conditionalOperator String             @default("AND")
   // RuleAction[] (see packages/core/src/rules/actions.ts) -- applied in
   // order to every match. Optional: a rule can exist purely for
   // detection/visibility with no actions yet.
-  actions    Json?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  matches    RuleMatch[]
-  aiEvaluations RuleAiEvaluation[]
+  actions             Json?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  matches             RuleMatch[]
+  aiEvaluations       RuleAiEvaluation[]
 
   @@unique([accountId, name])
   @@unique([accountId, systemType])
 }
 
 model RuleMatch {
-  id              String    @id @default(cuid())
-  ruleId          String
-  rule            Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  messageId       String
-  message         Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  matchedAt       DateTime  @default(now())
+  id               String    @id @default(cuid())
+  ruleId           String
+  rule             Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  messageId        String
+  message          Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  matchedAt        DateTime  @default(now())
   // Set once the rule's actions have been applied to this match over IMAP
   // -- null means "detected but not yet acted on" (or the rule has no
   // actions), letting detection and action execution run/fail

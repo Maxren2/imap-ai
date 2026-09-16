@@ -1,20 +1,22 @@
 import "../env.js";
 import { prisma } from "../db.js";
 import { Prisma } from "../generated/prisma/index.js";
-import { connectImap, requireEnv } from "../imap-connect.js";
+import { connectAccountImap } from "../mail-provider.js";
+import { resolveAccounts } from "../account-scope.js";
 import { parseRuleActions, applyRuleActions } from "./actions.js";
+import type { EmailAccount } from "../generated/prisma/index.js";
 
 /**
  * Applies each rule's actions (label/archive/markRead/star) to matches
  * that haven't been acted on yet. Separate from rules:run (detection) on
  * purpose -- matching is cheap and safe to run often, acting on the real
  * mailbox is not, so they run as distinct, independently-idempotent steps.
+ * Loops over every linked account, one IMAP connection per account --
+ * never shared, since a connection only ever sees one mailbox.
  */
-async function main() {
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-
+async function applyActionsForAccount(account: EmailAccount): Promise<void> {
   const rulesWithActions = await prisma.rule.findMany({
-    where: { enabled: true, actions: { not: Prisma.DbNull } },
+    where: { enabled: true, actions: { not: Prisma.DbNull }, accountId: account.id },
   });
 
   const pendingByRule = await Promise.all(
@@ -29,13 +31,13 @@ async function main() {
 
   const totalPending = pendingByRule.reduce((sum, { pending }) => sum + pending.length, 0);
   if (totalPending === 0) {
-    console.log("Nothing to act on.");
+    console.log(`[${account.email}] Nothing to act on.`);
     return;
   }
 
   // All current matches live in INBOX -- single-mailbox MVP scope, same
   // simplification already made for AI body-fetching in rules:run.
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   try {
@@ -76,12 +78,31 @@ async function main() {
         }
       }
 
-      console.log(`Rule "${rule.name}": applied actions to ${applied} match(es)${failed > 0 ? `, ${failed} failed` : ""}.`);
+      console.log(`  [${account.email}] Rule "${rule.name}": applied actions to ${applied} match(es)${failed > 0 ? `, ${failed} failed` : ""}.`);
     }
   } finally {
     lock.release();
     await client.logout();
   }
+}
+
+async function main() {
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
+
+  let anyFailed = false;
+  for (const account of accounts) {
+    try {
+      await applyActionsForAccount(account);
+    } catch (error) {
+      anyFailed = true;
+      console.error(`rules:apply-actions failed for ${account.email}:`, error);
+    }
+  }
+  if (anyFailed) process.exitCode = 1;
 }
 
 main()

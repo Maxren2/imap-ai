@@ -1,5 +1,6 @@
 import { prisma } from "@imap-ai/core/db";
 import { redirect } from "next/navigation";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,7 @@ export const dynamic = "force-dynamic";
  * redirects there. The actual chat UI lives at /chat/[chatId].
  */
 export default async function ChatIndexPage() {
-  const account = await prisma.account.findFirst();
-  if (!account) redirect("/");
+  const account = await getActiveEmailAccount();
 
   const mostRecentChat = await prisma.chat.findFirst({
     where: { accountId: account.id },

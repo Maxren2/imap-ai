@@ -3,6 +3,7 @@ import { createOllama } from "ollama-ai-provider-v2";
 import { prisma } from "@imap-ai/core/db";
 import { Prisma } from "@imap-ai/core/prisma";
 import { createChatTools } from "@/lib/ai/tools";
+import { getActiveEmailAccount } from "@/lib/session";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -22,7 +23,7 @@ const SYSTEM_PROMPT =
 export async function POST(request: Request) {
   const { messages, chatId }: { messages: UIMessage[]; chatId: string } = await request.json();
 
-  const account = await prisma.account.findFirstOrThrow();
+  const account = await getActiveEmailAccount();
   const ollama = createOllama({
     baseURL: `${requireEnv("OLLAMA_BASE_URL").replace(/\/$/, "")}/api`,
     compatibility: "strict",

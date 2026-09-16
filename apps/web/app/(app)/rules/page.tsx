@@ -6,12 +6,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
 import Link from "next/link";
 import { Plus, Play, Zap } from "lucide-react";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function RulesPage() {
+  const account = await getActiveEmailAccount();
   const [rules, backgroundRuns] = await Promise.all([
     prisma.rule.findMany({
+      where: { accountId: account.id },
       orderBy: { name: "asc" },
       include: { _count: { select: { matches: true } } },
     }),

@@ -1,12 +1,7 @@
 import "../env.js";
 import { prisma } from "../db.js";
+import { resolveAccounts } from "../account-scope.js";
 import type { RuleActions } from "./actions.js";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 /**
  * A handful of common inbox-cleanup rules, structurally inspired by
@@ -19,7 +14,11 @@ function requireEnv(name: string): string {
  * reviewed what they'd catch.
  */
 async function main() {
-  const account = await prisma.account.findUniqueOrThrow({ where: { email: requireEnv("GMAIL_ADDRESS") } });
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
 
   const rules: { name: string; aiPrompt: string; actions: RuleActions }[] = [
     {
@@ -48,13 +47,15 @@ async function main() {
     },
   ];
 
-  for (const { name, aiPrompt, actions } of rules) {
-    await prisma.rule.upsert({
-      where: { accountId_name: { accountId: account.id, name } },
-      update: { aiPrompt, actions, enabled: false },
-      create: { accountId: account.id, name, aiPrompt, actions, enabled: false },
-    });
-    console.log(`Upserted rule "${name}" (disabled -- enable it once you've reviewed what it'd catch).`);
+  for (const account of accounts) {
+    for (const { name, aiPrompt, actions } of rules) {
+      await prisma.rule.upsert({
+        where: { accountId_name: { accountId: account.id, name } },
+        update: { aiPrompt, actions, enabled: false },
+        create: { accountId: account.id, name, aiPrompt, actions, enabled: false },
+      });
+      console.log(`[${account.email}] Upserted rule "${name}" (disabled -- enable it once you've reviewed what it'd catch).`);
+    }
   }
 }
 

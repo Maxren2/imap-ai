@@ -5,31 +5,28 @@ import { Button } from "@/components/ui/button";
 import { triggerBackfill, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
 import { INBOX_PAGE_SIZE } from "@/lib/constants";
 import { Download } from "lucide-react";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [account, inboxCount, threadCounts, threadMessages, inbox, backgroundRuns] = await Promise.all([
-    prisma.account.findFirst(),
-    prisma.message.count({ where: { inInbox: true } }),
+  const account = await getActiveEmailAccount();
+  const [inboxCount, threadCounts, threadMessages, inbox, backgroundRuns] = await Promise.all([
+    prisma.message.count({ where: { inInbox: true, mailbox: { accountId: account.id } } }),
     getInboxThreadCounts(),
     getInboxThreads(),
-    prisma.mailbox.findFirst({ where: { name: "INBOX" } }),
+    prisma.mailbox.findFirst({ where: { name: "INBOX", accountId: account.id } }),
     getLatestHomeBackgroundRuns(),
   ]);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-      {account ? (
-        <p className="mt-1 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{account.email}</span> &middot;{" "}
-          {inboxCount.toLocaleString()} in inbox
-          {inbox && !inbox.fullyBackfilled && <> &middot; older mail not yet synced</>}
-        </p>
-      ) : (
-        <p className="mt-1 text-sm text-muted-foreground">No account synced yet. Run `npm run sync` from the repo root first.</p>
-      )}
+      <p className="mt-1 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">{account.email}</span> &middot; {inboxCount.toLocaleString()} in
+        inbox
+        {inbox && !inbox.fullyBackfilled && <> &middot; older mail not yet synced</>}
+      </p>
 
       {inbox && !inbox.fullyBackfilled && (
         <form action={triggerBackfill} className="mt-3">

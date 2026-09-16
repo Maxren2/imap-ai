@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { AccountSwitcher, type AccountRow } from "@/components/account-switcher";
 
 export interface NavItem {
   title: string;
@@ -101,7 +102,7 @@ function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ accounts, activeAccountId }: { accounts: AccountRow[]; activeAccountId: string }) {
   const pathname = usePathname();
   const ungrouped = navItems.filter((item) => !item.group);
   const manageItems = navItems.filter((item) => item.group === "manage");
@@ -116,6 +117,9 @@ export function AppSidebar() {
           </div>
           <span className="font-semibold group-data-[collapsible=icon]:hidden">imap-ai</span>
         </Link>
+        <div className="group-data-[collapsible=icon]:hidden">
+          <AccountSwitcher accounts={accounts} activeAccountId={activeAccountId} />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

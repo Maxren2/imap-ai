@@ -1,11 +1,6 @@
 import "../env.js";
 import { prisma } from "../db.js";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
+import { resolveAccounts } from "../account-scope.js";
 
 // Original wording, inspired by the concept of "cold outreach" rather
 // than copied from any specific source -- an unsolicited message from
@@ -28,26 +23,32 @@ const COLD_EMAIL_PROMPT =
  * normal rule editor at /rules/[id]/edit. Safe to re-run.
  */
 async function main() {
-  const account = await prisma.account.findUniqueOrThrow({ where: { email: requireEnv("GMAIL_ADDRESS") } });
-
-  const existing = await prisma.rule.findUnique({
-    where: { accountId_systemType: { accountId: account.id, systemType: "COLD_EMAIL" } },
-  });
-  if (existing) {
-    console.log(`Cold Email Blocker rule already exists ("${existing.name}"), leaving it as-is.`);
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
     return;
   }
 
-  const rule = await prisma.rule.create({
-    data: {
-      accountId: account.id,
-      name: "Cold Email Blocker",
-      systemType: "COLD_EMAIL",
-      enabled: true,
-      aiPrompt: COLD_EMAIL_PROMPT,
-    },
-  });
-  console.log(`Created Cold Email Blocker rule "${rule.name}" (no actions attached -- detection only for now).`);
+  for (const account of accounts) {
+    const existing = await prisma.rule.findUnique({
+      where: { accountId_systemType: { accountId: account.id, systemType: "COLD_EMAIL" } },
+    });
+    if (existing) {
+      console.log(`[${account.email}] Cold Email Blocker rule already exists ("${existing.name}"), leaving it as-is.`);
+      continue;
+    }
+
+    const rule = await prisma.rule.create({
+      data: {
+        accountId: account.id,
+        name: "Cold Email Blocker",
+        systemType: "COLD_EMAIL",
+        enabled: true,
+        aiPrompt: COLD_EMAIL_PROMPT,
+      },
+    });
+    console.log(`[${account.email}] Created Cold Email Blocker rule "${rule.name}" (no actions attached -- detection only for now).`);
+  }
 }
 
 main()

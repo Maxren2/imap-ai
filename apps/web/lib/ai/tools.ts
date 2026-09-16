@@ -118,7 +118,9 @@ export function createChatTools(accountId: string) {
         fromAddress: z.string().min(1).describe("The sender's email address to check"),
       }),
       execute: async ({ fromAddress }) => {
-        const inboxCount = await prisma.message.count({ where: { fromAddress, inInbox: true } });
+        const inboxCount = await prisma.message.count({
+          where: { fromAddress, inInbox: true, mailbox: { accountId } },
+        });
         return { fromAddress, inboxCount };
       },
     }),
@@ -135,7 +137,9 @@ export function createChatTools(accountId: string) {
         label: z.string().min(1).describe("The label name to apply"),
       }),
       execute: async ({ fromAddress, label }) => {
-        const inboxCount = await prisma.message.count({ where: { fromAddress, inInbox: true } });
+        const inboxCount = await prisma.message.count({
+          where: { fromAddress, inInbox: true, mailbox: { accountId } },
+        });
         return { fromAddress, label, inboxCount };
       },
     }),
@@ -147,6 +151,7 @@ export function createChatTools(accountId: string) {
       }),
       execute: async ({ query }) => {
         const where = {
+          mailbox: { accountId },
           OR: [
             { fromAddress: { contains: query, mode: "insensitive" as const } },
             { fromName: { contains: query, mode: "insensitive" as const } },

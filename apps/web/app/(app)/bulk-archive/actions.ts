@@ -4,6 +4,7 @@ import { prisma } from "@imap-ai/core/db";
 import { revalidatePath } from "next/cache";
 import { archiveMessages } from "@/app/mail-actions";
 import { SENDER_PAGE_SIZE } from "@/lib/constants";
+import { getActiveEmailAccount } from "@/lib/session";
 
 export interface ArchiveCandidateRow {
   fromAddress: string;
@@ -27,6 +28,7 @@ export interface ArchiveCandidateCursor {
  * listSenders -- see that function's comment for why a CTE.
  */
 export async function listArchiveCandidates(cursor?: ArchiveCandidateCursor): Promise<ArchiveCandidateRow[]> {
+  const account = await getActiveEmailAccount();
   const rows = await prisma.$queryRaw<
     {
       fromAddress: string;
@@ -44,7 +46,8 @@ export async function listArchiveCandidates(cursor?: ArchiveCandidateCursor): Pr
         COUNT(*) FILTER (WHERE "inInbox" = true) AS "inboxCount",
         COUNT(*) FILTER (WHERE "inInbox" = true AND NOT ('\\Seen' = ANY(flags))) AS "unreadCount"
       FROM "Message"
-      WHERE "fromAddress" IS NOT NULL
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "fromAddress" IS NOT NULL AND "Mailbox"."accountId" = ${account.id}
       GROUP BY "fromAddress"
       HAVING COUNT(*) FILTER (WHERE "inInbox" = true) > 0
     )
@@ -66,10 +69,12 @@ export async function listArchiveCandidates(cursor?: ArchiveCandidateCursor): Pr
 }
 
 export async function countArchiveCandidates(): Promise<number> {
+  const account = await getActiveEmailAccount();
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) as count FROM (
       SELECT "fromAddress" FROM "Message"
-      WHERE "fromAddress" IS NOT NULL
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "fromAddress" IS NOT NULL AND "Mailbox"."accountId" = ${account.id}
       GROUP BY "fromAddress"
       HAVING COUNT(*) FILTER (WHERE "inInbox" = true) > 0
     ) t
@@ -85,8 +90,9 @@ export async function countArchiveCandidates(): Promise<number> {
 export async function archiveSenders(fromAddresses: string[]): Promise<{ archived: number }> {
   if (fromAddresses.length === 0) return { archived: 0 };
 
+  const account = await getActiveEmailAccount();
   const messages = await prisma.message.findMany({
-    where: { fromAddress: { in: fromAddresses }, inInbox: true },
+    where: { fromAddress: { in: fromAddresses }, inInbox: true, mailbox: { accountId: account.id } },
     select: { id: true },
   });
 

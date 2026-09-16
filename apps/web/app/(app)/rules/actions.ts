@@ -7,6 +7,7 @@ import { ruleActionsSchema, type RuleActions } from "@imap-ai/core/rules/actions
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { runNpmScript, getLatestBackgroundRuns as getLatestBackgroundRunsShared, type BackgroundRunRow } from "@/lib/background-run";
+import { getActiveEmailAccount } from "@/lib/session";
 
 const CONDITION_ROWS = 4;
 
@@ -51,14 +52,17 @@ export async function saveRule(ruleId: string | null, formData: FormData): Promi
 
   const conditionsValue = conditions ?? Prisma.DbNull;
   const actionsValue = actions ?? Prisma.DbNull;
+  const account = await getActiveEmailAccount();
 
   if (ruleId) {
-    await prisma.rule.update({
-      where: { id: ruleId },
+    // updateMany, scoped by accountId, not a plain update by id -- a
+    // ruleId belonging to a different account must be a no-op, not an
+    // edit of someone else's rule.
+    await prisma.rule.updateMany({
+      where: { id: ruleId, accountId: account.id },
       data: { name, enabled, aiPrompt, conditions: conditionsValue, actions: actionsValue, conditionalOperator },
     });
   } else {
-    const account = await prisma.account.findFirstOrThrow();
     await prisma.rule.create({
       data: {
         accountId: account.id,
@@ -77,14 +81,16 @@ export async function saveRule(ruleId: string | null, formData: FormData): Promi
 }
 
 export async function deleteRule(formData: FormData): Promise<void> {
+  const account = await getActiveEmailAccount();
   const id = formData.get("id") as string;
-  await prisma.rule.delete({ where: { id } });
+  await prisma.rule.deleteMany({ where: { id, accountId: account.id } });
   revalidatePath("/rules");
 }
 
 export async function toggleRule(formData: FormData): Promise<void> {
+  const account = await getActiveEmailAccount();
   const id = formData.get("id") as string;
-  const rule = await prisma.rule.findUniqueOrThrow({ where: { id } });
+  const rule = await prisma.rule.findFirstOrThrow({ where: { id, accountId: account.id } });
   await prisma.rule.update({ where: { id }, data: { enabled: !rule.enabled } });
   revalidatePath("/rules");
 }
@@ -95,15 +101,18 @@ export async function toggleRule(formData: FormData): Promise<void> {
 // Windows). Extracted there so other pages (e.g. the homepage's backfill
 // trigger) can reuse the exact same mechanism.
 export async function triggerRulesRun(): Promise<void> {
-  await runNpmScript("rules:run", "rules:run", "/rules");
+  const account = await getActiveEmailAccount();
+  await runNpmScript("rules:run", "rules:run", "/rules", account.id);
 }
 
 export async function triggerApplyActions(): Promise<void> {
-  await runNpmScript("rules:apply-actions", "rules:apply-actions", "/rules");
+  const account = await getActiveEmailAccount();
+  await runNpmScript("rules:apply-actions", "rules:apply-actions", "/rules", account.id);
 }
 
 export type { BackgroundRunRow };
 
 export async function getLatestBackgroundRuns(): Promise<BackgroundRunRow[]> {
-  return getLatestBackgroundRunsShared(["rules:run", "rules:apply-actions"]);
+  const account = await getActiveEmailAccount();
+  return getLatestBackgroundRunsShared(account.id, ["rules:run", "rules:apply-actions"]);
 }

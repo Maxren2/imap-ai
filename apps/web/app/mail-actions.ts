@@ -1,13 +1,15 @@
 "use server";
 
 import { prisma } from "@imap-ai/core/db";
-import { connectImap, requireEnv } from "@imap-ai/core/imap-connect";
+import { connectAccountImap } from "@imap-ai/core/mail-provider";
 import { applyRuleActions } from "@imap-ai/core/rules/actions";
 import { ensureMessageBody } from "@imap-ai/core/body";
+import type { EmailAccount } from "@imap-ai/core/prisma";
 import { revalidatePath } from "next/cache";
 import { runNpmScript, getLatestBackgroundRuns } from "@/lib/background-run";
 import type { BackgroundRunRow } from "@/lib/background-run";
 import { INBOX_PAGE_SIZE } from "@/lib/constants";
+import { getActiveEmailAccount } from "@/lib/session";
 
 /**
  * Archives messages directly from the mail list (not via the rules
@@ -24,11 +26,13 @@ import { INBOX_PAGE_SIZE } from "@/lib/constants";
  * separately; a moved message just won't be actionable via IMAP again
  * until a future sync properly tracks it there.
  */
-async function archiveMessageRows(messages: { id: string; uid: number }[]): Promise<{ archived: number }> {
+async function archiveMessageRows(
+  messages: { id: string; uid: number }[],
+  account: EmailAccount,
+): Promise<{ archived: number }> {
   if (messages.length === 0) return { archived: 0 };
 
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   let archived = 0;
@@ -53,8 +57,12 @@ async function archiveMessageRows(messages: { id: string; uid: number }[]): Prom
 
 export async function archiveMessages(messageIds: string[]): Promise<{ archived: number }> {
   if (messageIds.length === 0) return { archived: 0 };
-  const messages = await prisma.message.findMany({ where: { id: { in: messageIds } }, select: { id: true, uid: true } });
-  return archiveMessageRows(messages);
+  const account = await getActiveEmailAccount();
+  const messages = await prisma.message.findMany({
+    where: { id: { in: messageIds }, mailbox: { accountId: account.id } },
+    select: { id: true, uid: true },
+  });
+  return archiveMessageRows(messages, account);
 }
 
 /**
@@ -67,11 +75,12 @@ export async function archiveMessages(messageIds: string[]): Promise<{ archived:
  */
 export async function archiveThreads(threadIds: string[]): Promise<{ archived: number }> {
   if (threadIds.length === 0) return { archived: 0 };
+  const account = await getActiveEmailAccount();
   const messages = await prisma.message.findMany({
-    where: { gmailThreadId: { in: threadIds }, inInbox: true },
+    where: { gmailThreadId: { in: threadIds }, inInbox: true, mailbox: { accountId: account.id } },
     select: { id: true, uid: true },
   });
-  return archiveMessageRows(messages);
+  return archiveMessageRows(messages, account);
 }
 
 /**
@@ -88,14 +97,14 @@ export async function archiveThreads(threadIds: string[]): Promise<{ archived: n
  * one call site; a future sync will pick up the real label.
  */
 export async function labelSenderMessages(fromAddress: string, label: string): Promise<{ labeled: number }> {
+  const account = await getActiveEmailAccount();
   const messages = await prisma.message.findMany({
-    where: { fromAddress, inInbox: true },
+    where: { fromAddress, inInbox: true, mailbox: { accountId: account.id } },
     select: { id: true, uid: true },
   });
   if (messages.length === 0) return { labeled: 0 };
 
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   let labeled = 0;
@@ -167,21 +176,24 @@ interface ThreadRowRaw {
  * OFFSET-based.
  */
 export async function getInboxThreads(beforeIso?: string, unreadOnly?: boolean): Promise<ThreadListMessagePlain[]> {
+  const account = await getActiveEmailAccount();
   const cutoff = beforeIso ? new Date(beforeIso) : null;
 
   const rows = await prisma.$queryRaw<ThreadRowRaw[]>`
     WITH latest AS (
-      SELECT DISTINCT ON ("gmailThreadId")
-        id, "gmailThreadId", subject, "fromAddress", "fromName", date, labels, flags, "bodyText", "bodyFetchedAt"
+      SELECT DISTINCT ON ("Message"."gmailThreadId")
+        "Message".id, "Message"."gmailThreadId", subject, "fromAddress", "fromName", date, labels, flags, "bodyText", "bodyFetchedAt"
       FROM "Message"
-      WHERE "inInbox" = true
-      ORDER BY "gmailThreadId", date DESC
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "inInbox" = true AND "Mailbox"."accountId" = ${account.id}
+      ORDER BY "Message"."gmailThreadId", date DESC
     ),
     stats AS (
-      SELECT "gmailThreadId", COUNT(*) AS "messageCount", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
+      SELECT "Message"."gmailThreadId", COUNT(*) AS "messageCount", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
       FROM "Message"
-      WHERE "inInbox" = true
-      GROUP BY "gmailThreadId"
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "inInbox" = true AND "Mailbox"."accountId" = ${account.id}
+      GROUP BY "Message"."gmailThreadId"
     )
     SELECT latest.*, stats."messageCount", stats."hasUnread"
     FROM latest
@@ -210,13 +222,15 @@ export async function getInboxThreads(beforeIso?: string, unreadOnly?: boolean):
 
 /** Distinct-thread totals for the Inbox's All/Unread tab labels -- a thread counts as unread if any message in it is. */
 export async function getInboxThreadCounts(): Promise<{ total: number; unread: number }> {
+  const account = await getActiveEmailAccount();
   const rows = await prisma.$queryRaw<{ total: bigint; unread: bigint }[]>`
     SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "hasUnread") AS unread
     FROM (
-      SELECT "gmailThreadId", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
+      SELECT "Message"."gmailThreadId", BOOL_OR(NOT ('\\Seen' = ANY(flags))) AS "hasUnread"
       FROM "Message"
-      WHERE "inInbox" = true
-      GROUP BY "gmailThreadId"
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "inInbox" = true AND "Mailbox"."accountId" = ${account.id}
+      GROUP BY "Message"."gmailThreadId"
     ) t
   `;
   return { total: Number(rows[0].total), unread: Number(rows[0].unread) };
@@ -235,14 +249,14 @@ export async function getInboxThreadCounts(): Promise<{ total: number; unread: n
 export async function fetchMissingSnippets(messageIds: string[]): Promise<Record<string, string | null>> {
   if (messageIds.length === 0) return {};
 
+  const account = await getActiveEmailAccount();
   const messages = await prisma.message.findMany({
-    where: { id: { in: messageIds }, bodyFetchedAt: null },
+    where: { id: { in: messageIds }, bodyFetchedAt: null, mailbox: { accountId: account.id } },
     select: { id: true, uid: true, bodyText: true, bodyFetchedAt: true },
   });
   if (messages.length === 0) return {};
 
-  const gmailAddress = requireEnv("GMAIL_ADDRESS");
-  const client = await connectImap(gmailAddress);
+  const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
 
   const snippets: Record<string, string | null> = {};
@@ -270,11 +284,13 @@ export async function fetchMissingSnippets(messageIds: string[]): Promise<Record
  * uses for "Run detection now" (see apps/web/lib/background-run.ts).
  */
 export async function triggerBackfill(): Promise<void> {
-  await runNpmScript("backfill", "backfill", "/");
+  const account = await getActiveEmailAccount();
+  await runNpmScript("backfill", "backfill", "/", account.id);
 }
 
 export type { BackgroundRunRow };
 
 export async function getLatestHomeBackgroundRuns(): Promise<BackgroundRunRow[]> {
-  return getLatestBackgroundRuns(["backfill"]);
+  const account = await getActiveEmailAccount();
+  return getLatestBackgroundRuns(account.id, ["backfill"]);
 }

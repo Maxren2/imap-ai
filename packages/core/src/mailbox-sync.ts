@@ -8,11 +8,16 @@ import { parseUnsubscribeHeaders } from "./unsubscribe.js";
 // of the regular sync rather than lazily on demand.
 const UNSUBSCRIBE_HEADERS = ["list-unsubscribe", "list-unsubscribe-post"];
 
-export async function ensureAccount(email: string, provider = "gmail") {
-  return prisma.account.upsert({
-    where: { email },
+// Only used by migrate-legacy-account.ts now -- every other account
+// creation path goes through the web app's own "Connect Gmail"/"Add IMAP
+// account" flows, which need a userId this function's old single-account
+// callers (sync.ts/watch.ts/backfill.ts) never had. Those three now just
+// loop over accounts that already exist (see account-scope.ts).
+export async function ensureAccount(userId: string, email: string, provider = "gmail") {
+  return prisma.emailAccount.upsert({
+    where: { userId_email: { userId, email } },
     update: {},
-    create: { email, provider },
+    create: { userId, email, provider },
   });
 }
 

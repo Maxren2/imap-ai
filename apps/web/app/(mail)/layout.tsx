@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { CommandPaletteTrigger } from "@/components/command-palette";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
+import { AccountSwitcher } from "@/components/account-switcher";
+import { getActiveEmailAccount, listEmailAccounts } from "@/lib/session";
 
 // inbox-zero's real Mail route (`/mail`) has no sidebar showing at all --
 // confirmed live during the visual-polish research (DESIGN.md section 33
@@ -20,16 +22,20 @@ import { ThemeToggleButton } from "@/components/theme-toggle-button";
 //    would mean duplicating the chat UI, a bigger scope than a layout
 //    match. This is a real link to the existing /chat page instead, kept
 //    functional rather than a decorative control that does nothing.
-export default function MailLayout({ children }: { children: ReactNode }) {
+export default async function MailLayout({ children }: { children: ReactNode }) {
+  const [account, accounts] = await Promise.all([getActiveEmailAccount(), listEmailAccounts()]);
+
   return (
     <div className="flex min-h-svh flex-col">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2 shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
             i
           </div>
-          <span className="font-semibold">imap-ai</span>
         </Link>
+        <div className="w-64">
+          <AccountSwitcher accounts={accounts} activeAccountId={account.id} />
+        </div>
         <div className="flex-1" />
         <CommandPaletteTrigger />
         <ThemeToggleButton />

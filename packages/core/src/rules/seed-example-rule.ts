@@ -1,20 +1,20 @@
 import "../env.js";
 import { prisma } from "../db.js";
+import { resolveAccounts } from "../account-scope.js";
 import type { RuleConditions } from "./types.js";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
-
 /**
- * Creates a couple of example rules against the account already synced by
- * `npm run sync`, so the rules engine has something real to match before
- * there's a UI to create rules through. Safe to re-run: upserts by name.
+ * Creates a couple of example rules against every linked account (or just
+ * one via ACCOUNT_ID/--account, see account-scope.ts), so the rules engine
+ * has something real to match before there's a UI to create rules through.
+ * Safe to re-run: upserts by name.
  */
 async function main() {
-  const account = await prisma.account.findUniqueOrThrow({ where: { email: requireEnv("GMAIL_ADDRESS") } });
+  const accounts = await resolveAccounts();
+  if (accounts.length === 0) {
+    console.log("No linked accounts.");
+    return;
+  }
 
   const rules: { name: string; conditions?: RuleConditions; aiPrompt?: string }[] = [
     {
@@ -32,13 +32,15 @@ async function main() {
     },
   ];
 
-  for (const { name, conditions, aiPrompt } of rules) {
-    await prisma.rule.upsert({
-      where: { accountId_name: { accountId: account.id, name } },
-      update: { conditions, aiPrompt },
-      create: { accountId: account.id, name, conditions, aiPrompt },
-    });
-    console.log(`Upserted rule "${name}".`);
+  for (const account of accounts) {
+    for (const { name, conditions, aiPrompt } of rules) {
+      await prisma.rule.upsert({
+        where: { accountId_name: { accountId: account.id, name } },
+        update: { conditions, aiPrompt },
+        create: { accountId: account.id, name, conditions, aiPrompt },
+      });
+      console.log(`[${account.email}] Upserted rule "${name}".`);
+    }
   }
 }
 

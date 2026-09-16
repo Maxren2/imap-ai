@@ -28,10 +28,10 @@ export async function runNpmScript(
   script: string,
   kind: string,
   revalidate: string,
+  accountId: string,
   env?: Record<string, string>,
 ): Promise<void> {
-  const account = await prisma.account.findFirstOrThrow();
-  const run = await prisma.backgroundRun.create({ data: { accountId: account.id, kind } });
+  const run = await prisma.backgroundRun.create({ data: { accountId, kind } });
 
   const repoRoot = path.resolve(process.cwd(), "../..");
   const logPath = path.join(os.tmpdir(), `imap-ai-run-${run.id}.log`);
@@ -46,7 +46,7 @@ export async function runNpmScript(
     cwd: repoRoot,
     stdio: "ignore",
     shell: true,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ACCOUNT_ID: accountId, ...env },
   });
 
   function readLog(): string {
@@ -88,11 +88,9 @@ export interface BackgroundRunRow {
   finishedAtIso: string | null;
 }
 
-export async function getLatestBackgroundRuns(kinds?: string[]): Promise<BackgroundRunRow[]> {
-  const account = await prisma.account.findFirst();
-  if (!account) return [];
+export async function getLatestBackgroundRuns(accountId: string, kinds?: string[]): Promise<BackgroundRunRow[]> {
   const runs = await prisma.backgroundRun.findMany({
-    where: { accountId: account.id, ...(kinds ? { kind: { in: kinds } } : {}) },
+    where: { accountId, ...(kinds ? { kind: { in: kinds } } : {}) },
     orderBy: { startedAt: "desc" },
     take: 5,
   });
