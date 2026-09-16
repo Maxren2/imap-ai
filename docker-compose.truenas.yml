@@ -1,0 +1,69 @@
+# Deploy imap-ai on TrueNAS SCALE via Apps -> Discover Apps -> Custom App
+# -> Install via YAML (recent SCALE versions run this as a real `docker
+# compose` file under the hood). Pulls the published image from
+# ghcr.io/maxren2/imap-ai instead of building locally -- unlike
+# docker-compose.prod.yml (this repo's build-it-yourself variant), this
+# one only needs the image tag, not the source tree, on the TrueNAS host.
+#
+# Before deploying:
+# 1. Create the one folder this stack actually needs persisted --
+#    Postgres's data directory. Nothing else writes to disk: this app
+#    keeps its whole mirror (mail, rules, chat history) in Postgres, and
+#    doesn't sync attachments to local storage at all.
+#      mkdir -p /mnt/App/imap-ai/postgres-data
+# 2. Fill in every <...> placeholder below. AUTH_SECRET and
+#    CREDENTIAL_ENCRYPTION_KEY: generate each once yourself with
+#    `openssl rand -base64 32` -- never auto-generate or reuse one from
+#    another deploy. GOOGLE_CLIENT_ID/SECRET and MICROSOFT_CLIENT_ID/
+#    SECRET/TENANT are optional -- only needed if you want "Connect
+#    Gmail"/"Connect Outlook" to work; leave them blank to skip. Same for
+#    OLLAMA_BASE_URL/OLLAMA_MODEL (AI rules + chat + draft/auto-reply).
+# 3. `docker compose -f docker-compose.truenas.yml up -d` (or paste this
+#    file into SCALE's "Install via YAML" editor).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: imap_ai
+      POSTGRES_PASSWORD: imap_ai
+      POSTGRES_DB: imap_ai
+    volumes:
+      - /mnt/App/imap-ai/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imap_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    image: ghcr.io/maxren2/imap-ai:1.0.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://imap_ai:imap_ai@postgres:5432/imap_ai
+      AUTH_SECRET: "<generate with: openssl rand -base64 32>"
+      CREDENTIAL_ENCRYPTION_KEY: "<generate with: openssl rand -base64 32>"
+      GOOGLE_CLIENT_ID: "<optional -- for Connect Gmail>"
+      GOOGLE_CLIENT_SECRET: "<optional -- for Connect Gmail>"
+      MICROSOFT_CLIENT_ID: "<optional -- for Connect Outlook>"
+      MICROSOFT_CLIENT_SECRET: "<optional -- for Connect Outlook>"
+      MICROSOFT_TENANT: common
+      OLLAMA_BASE_URL: "<optional -- e.g. http://10.10.20.3:30068, for AI rules/chat/draft>"
+      OLLAMA_MODEL: "<optional -- e.g. qwen3:8b, needs tool-calling support>"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/login"]
+      interval: 15s
+      timeout: 5s
+      # First boot runs `prisma migrate deploy` before serving -- give it
+      # real room before the healthcheck can mark the container unhealthy,
+      # same reasoning as this project's own catalog work elsewhere
+      # (truenas-apps: "longer healthcheck grace period for first-boot
+      # migrations").
+      start_period: 60s
+      retries: 5

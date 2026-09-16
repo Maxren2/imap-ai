@@ -141,6 +141,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 This starts Postgres and the app together; `docker-entrypoint.sh` runs `prisma migrate deploy` on every container start (a no-op once the schema's already current) before serving on port 3000. Sign up and link a mailbox the same way as local dev, above.
 
+**Published image**: [`ghcr.io/maxren2/imap-ai`](https://github.com/Maxren2/imap-ai/pkgs/container/imap-ai) (private), tagged `1.0.0` and `latest` — pull it directly instead of building locally. `docker-compose.truenas.yml` is the pull-and-run variant of the compose file above (pinned to a version tag, a bind-mounted Postgres data directory instead of a named volume), written for deploying via TrueNAS SCALE's Apps → Custom App → Install via YAML, but works with any plain `docker compose` host the same way.
+
 ## Environment variables at a glance
 
 Every variable the app reads at runtime, and nothing else — `.env.example` has the full per-var reasoning:
