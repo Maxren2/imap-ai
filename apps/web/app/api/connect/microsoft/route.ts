@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
-import { requireEnv } from "@imap-ai/core/imap-connect";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 
 export async function GET(request: Request) {
   await requireUser();
 
+  // See the matching comment in api/connect/google/route.ts: a missing
+  // client id is a real, expected "this provider isn't configured" case,
+  // not something that should throw -- an uncaught exception here was
+  // found live to corrupt Turbopack's dev-mode module cache badly enough
+  // that unrelated pages broke until a restart.
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  if (!clientId) {
+    return NextResponse.redirect(new URL("/add-account?error=microsoft_not_configured", request.url));
+  }
+
   const tenant = process.env.MICROSOFT_TENANT || "common";
   const redirectUri = new URL("/api/connect/microsoft/callback", request.url).toString();
   const state = await createOAuthState("microsoft_oauth_state");
 
   const params = new URLSearchParams({
-    client_id: requireEnv("MICROSOFT_CLIENT_ID"),
+    client_id: clientId,
     response_type: "code",
     redirect_uri: redirectUri,
     response_mode: "query",

@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
-import { requireEnv } from "@imap-ai/core/imap-connect";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 
 export async function GET(request: Request) {
   await requireUser(); // redirects to /login if not signed in
 
-  const client = new OAuth2Client(
-    requireEnv("GOOGLE_CLIENT_ID"),
-    requireEnv("GOOGLE_CLIENT_SECRET"),
-    new URL("/api/connect/google/callback", request.url).toString(),
-  );
+  // A missing GOOGLE_CLIENT_ID/SECRET means the operator hasn't configured
+  // Gmail OAuth for this instance -- a real, expected case (not every
+  // deployment wants every provider configured), not a server bug. Redirect
+  // to a friendly message instead of throwing: an uncaught exception here
+  // was found live to leave Turbopack's dev-mode module cache in a state
+  // where unrelated pages (e.g. /login) threw "An unexpected response was
+  // received from the server" until the dev server was restarted.
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return NextResponse.redirect(new URL("/add-account?error=google_not_configured", request.url));
+  }
+
+  const client = new OAuth2Client(clientId, clientSecret, new URL("/api/connect/google/callback", request.url).toString());
 
   const state = await createOAuthState("google_oauth_state");
 

@@ -95,6 +95,28 @@ export async function toggleRule(formData: FormData): Promise<void> {
   revalidatePath("/rules");
 }
 
+/**
+ * rules:run permanently skips any message it's already matched (RuleMatch)
+ * or, for AI rules, already evaluated and found not to match
+ * (RuleAiEvaluation) -- by design, so a "no" doesn't get re-asked forever
+ * (see run.ts's own long comment on that). That means editing a rule's
+ * conditions or AI prompt doesn't reconsider anything it already decided
+ * on under the old wording. This clears that bookkeeping for one rule so
+ * the next rules:run evaluates every message against it from scratch --
+ * does NOT undo any action already applied (archive/label/etc. stays
+ * applied); it only resets what's been *checked*.
+ */
+export async function resetRuleProgress(id: string): Promise<void> {
+  const account = await getActiveEmailAccount();
+  const rule = await prisma.rule.findFirst({ where: { id, accountId: account.id } });
+  if (!rule) return;
+
+  await prisma.ruleMatch.deleteMany({ where: { ruleId: id } });
+  await prisma.ruleAiEvaluation.deleteMany({ where: { ruleId: id } });
+  revalidatePath(`/rules/${id}/edit`);
+  revalidatePath("/rules");
+}
+
 // Fire-and-forget background npm script runner + BackgroundRun reader --
 // see apps/web/lib/background-run.ts for the full history of why this
 // works the way it does (detached:true silently broke stdio capture on
