@@ -8,3 +8,7 @@ next-env.d.ts
 *.tsbuildinfo
 packages/core/src/generated/
 .claude/settings.local.json
+# A personal, secret-filled deploy compose -- docker-compose.truenas.yml
+# (tracked) stays a clean placeholder-only template; a real filled-in copy
+# never belongs in this public repo.
+docker-compose.truenas.local.yml
