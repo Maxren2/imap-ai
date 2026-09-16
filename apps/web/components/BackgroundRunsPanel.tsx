@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, X } from "lucide-react";
 import type { BackgroundRunRow } from "@/lib/background-run";
+import { cancelRun } from "@/app/mail-actions";
 
 const POLL_MS = 2000;
 
@@ -30,6 +32,13 @@ function StatusBadge({ status }: { status: string }) {
       </Badge>
     );
   }
+  if (status === "cancelled") {
+    return (
+      <Badge variant="outline" className="font-normal text-muted-foreground">
+        Cancelled
+      </Badge>
+    );
+  }
   return (
     <Badge variant="outline" className="font-normal">
       Succeeded
@@ -52,6 +61,17 @@ export function BackgroundRunsPanel({
   fetchRuns: () => Promise<BackgroundRunRow[]>;
 }) {
   const [runs, setRuns] = useState(initialRuns);
+  const [isPending, startTransition] = useTransition();
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  function handleCancel(runId: string) {
+    setCancellingId(runId);
+    startTransition(async () => {
+      await cancelRun(runId);
+      setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, status: "cancelled" } : r)));
+      setCancellingId(null);
+    });
+  }
 
   // A plain `useState(initialRuns)` only uses the prop on first mount --
   // when a trigger form submits and Next.js revalidates the page, this
@@ -88,6 +108,23 @@ export function BackgroundRunsPanel({
             <span className="text-xs text-muted-foreground">
               {new Date(run.startedAtIso).toLocaleTimeString()} · {formatDuration(run.startedAtIso, run.finishedAtIso)}
             </span>
+            {run.status === "running" && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-6 px-2 text-xs"
+                disabled={isPending && cancellingId === run.id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleCancel(run.id);
+                }}
+              >
+                {isPending && cancellingId === run.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                Cancel
+              </Button>
+            )}
           </summary>
           <pre className="max-h-64 overflow-auto border-t bg-muted/30 px-3 py-2 text-xs whitespace-pre-wrap">
             {run.log || "Waiting for output..."}

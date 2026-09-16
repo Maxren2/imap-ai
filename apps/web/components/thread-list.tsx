@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useMemo, useTransition, useEffect } from "react";
+import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Archive, Loader2, CheckCircle2 } from "lucide-react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
@@ -14,13 +14,6 @@ import { archiveThreads, fetchMissingSnippets, getInboxThreads, type ThreadListM
 type Filter = "all" | "unread";
 
 export type ThreadListMessage = ThreadListMessagePlain;
-
-function initials(name: string | null, address: string | null): string {
-  const source = name || address || "?";
-  const parts = source.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 2).toUpperCase();
-}
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
@@ -184,32 +177,39 @@ export function ThreadList({
               )}
             >
               <Checkbox checked={selected.has(key)} onCheckedChange={() => toggleOne(key)} aria-label="Select thread" />
-              <Avatar className="h-7 w-7 shrink-0">
-                <AvatarFallback className="text-xs">{initials(message.fromName, message.fromAddress)}</AvatarFallback>
-              </Avatar>
-              <span className="flex w-36 shrink-0 items-baseline gap-1 truncate text-sm">
-                <span className="truncate">{displayName}</span>
-                {/* Inline count after the name, matching inbox-zero's real
-                    rendering ("Google 2") confirmed live -- not a separate
-                    badge off to the side. */}
-                {message.messageCount > 1 && (
-                  <span className="shrink-0 text-xs font-normal text-muted-foreground">{message.messageCount}</span>
-                )}
+              {/* Blue unread dot in place of a per-sender avatar -- matches
+                  inbox-zero's real row styling, confirmed live (DESIGN.md
+                  section 33 item 3): no avatar circles in the row at all,
+                  just this. A fixed-width slot either way keeps every row's
+                  content aligned regardless of read state. */}
+              <span className="flex w-2 shrink-0 justify-center">
+                {isUnread && <span className="h-2 w-2 rounded-full bg-primary" aria-hidden />}
               </span>
-              <span className={cn("min-w-0 flex-1 truncate text-sm", !isUnread && "text-muted-foreground")}>
-                {message.subject || "(no subject)"}
-                {message.snippet && <span className="font-normal text-muted-foreground"> — {message.snippet}</span>}
-              </span>
-              <div className="hidden shrink-0 gap-1 sm:flex">
-                {visibleLabels.slice(0, 2).map((label) => (
-                  <Badge key={label} variant="secondary" className="font-normal">
-                    {label}
-                  </Badge>
-                ))}
-              </div>
-              <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
-                {formatRelativeDate(message.dateIso)}
-              </span>
+              <Link href={`/thread/${key}`} className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="flex w-36 shrink-0 items-baseline gap-1 truncate text-sm">
+                  <span className="truncate">{displayName}</span>
+                  {/* Inline count after the name, matching inbox-zero's real
+                      rendering ("Google 2") confirmed live -- not a separate
+                      badge off to the side. */}
+                  {message.messageCount > 1 && (
+                    <span className="shrink-0 text-xs font-normal text-muted-foreground">{message.messageCount}</span>
+                  )}
+                </span>
+                <span className={cn("min-w-0 flex-1 truncate text-sm", !isUnread && "text-muted-foreground")}>
+                  {message.subject || "(no subject)"}
+                  {message.snippet && <span className="font-normal text-muted-foreground"> — {message.snippet}</span>}
+                </span>
+                <div className="hidden shrink-0 gap-1 sm:flex">
+                  {visibleLabels.slice(0, 2).map((label) => (
+                    <Badge key={label} variant="secondary" className="font-normal">
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
+                <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
+                  {formatRelativeDate(message.dateIso)}
+                </span>
+              </Link>
               <Button
                 size="icon"
                 variant="ghost"

@@ -52,7 +52,10 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
         continue;
       }
 
-      const archives = actions.some((action) => action.type === "archive");
+      // Both archive and delete take the message out of the inbox --
+      // whichever one applyRuleActions actually performs (delete wins if
+      // both are somehow set, see its own comment), inInbox needs to flip.
+      const removesFromInbox = actions.some((action) => action.type === "archive" || action.type === "delete");
 
       let applied = 0;
       let failed = 0;
@@ -66,7 +69,7 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
           // Gmail omits "\Inbox" from X-GM-LABELS when fetched from within
           // INBOX itself, so `labels` can't tell us this -- track it
           // explicitly instead (see DESIGN.md section 11).
-          if (archives) {
+          if (removesFromInbox) {
             await prisma.message.update({ where: { id: match.message.id }, data: { inInbox: false } });
           }
           applied++;

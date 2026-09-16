@@ -141,6 +141,12 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
               Star
             </label>
           </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="action_delete" name="action_delete" defaultChecked={actions.some((a) => a.type === "delete")} />
+            <label htmlFor="action_delete" className="text-sm">
+              Delete
+            </label>
+          </div>
           <Input
             type="text"
             name="action_label"
@@ -151,7 +157,8 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
         </div>
         <span className="text-xs text-muted-foreground">
           An existing Gmail label is reused if the name matches; otherwise a new one is created. Reserved system
-          labels (Inbox, Sent, Important, etc.) can&apos;t be targeted.
+          labels (Inbox, Sent, Important, etc.) can&apos;t be targeted. Delete moves matches to Trash -- recoverable
+          there, not a permanent erase. If both Archive and Delete are checked, Delete wins.
         </span>
       </div>
 

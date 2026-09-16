@@ -79,9 +79,14 @@ model BackgroundRun {
   // "rules:run" | "rules:apply-actions" -- a plain string (validated in
   // code), not a Prisma enum, same reasoning as SenderStatus.status.
   kind       String
-  // "running" | "succeeded" | "failed"
+  // "running" | "succeeded" | "failed" | "cancelled"
   status     String       @default("running")
   log        String       @default("")
+  // The spawned child process's PID (the shell's, since spawn uses
+  // shell: true -- see background-run.ts), so a "Cancel" click can find
+  // and kill it later from a completely separate request. Null once the
+  // run finishes; never reused across runs.
+  pid        Int?
   startedAt  DateTime     @default(now())
   finishedAt DateTime?
 }
@@ -141,6 +146,14 @@ model Message {
   uid                         Int
   gmailThreadId               String?
   gmailMessageId              String?
+  // The real RFC822 Message-ID header (imapflow's envelope.messageId) --
+  // distinct from gmailMessageId above, which is Gmail's own internal
+  // X-GM-MSGID extension attribute, not usable for email threading.
+  // Needed to set In-Reply-To/References when actually sending a reply
+  // (see mail-actions.ts's replyToThread) so mail clients thread it
+  // correctly. Already present in every sync's existing ENVELOPE fetch --
+  // no extra IMAP round trip to capture it.
+  messageIdHeader             String?
   subject                     String?
   fromAddress                 String?
   fromName                    String?

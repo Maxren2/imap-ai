@@ -31,6 +31,7 @@
     "backfill": "tsx src/backfill.ts",
     "backfill-unsubscribe-headers": "tsx src/backfill-unsubscribe-headers.ts",
     "backfill-to-address": "tsx src/backfill-to-address.ts",
+    "backfill-message-id": "tsx src/backfill-message-id.ts",
     "rules:run": "tsx src/rules/run.ts",
     "rules:apply-actions": "tsx src/rules/apply-actions.ts",
     "rules:seed-example": "tsx src/rules/seed-example-rule.ts",

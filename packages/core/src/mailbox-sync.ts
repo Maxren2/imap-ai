@@ -60,6 +60,7 @@ async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
       uid: message.uid,
       gmailThreadId: message.threadId ?? null,
       gmailMessageId: message.emailId ?? null,
+      messageIdHeader: message.envelope?.messageId ?? null,
       subject: message.envelope?.subject ?? null,
       fromAddress: from?.address ?? null,
       fromName: from?.name ?? null,

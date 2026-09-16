@@ -23,6 +23,7 @@ const actionShape = z.discriminatedUnion("type", [
   z.object({ type: z.literal("archive") }),
   z.object({ type: z.literal("markRead") }),
   z.object({ type: z.literal("star") }),
+  z.object({ type: z.literal("delete") }),
 ]);
 
 /**
@@ -56,7 +57,7 @@ export function createChatTools(accountId: string) {
 
     createRule: tool({
       description:
-        "Create a new email rule. Provide a name and at least one of: conditions (deterministic field/operator/value checks on fromAddress/fromName/toAddress/subject/labels) or aiPrompt (a natural-language description evaluated by AI). If both are given, conditionalOperator controls how they combine: 'AND' (default) means conditions act as a cheap pre-filter and the AI prompt only runs on what already passed; 'OR' means either alone is enough to match. Optionally specify actions (label/archive/markRead/star) to apply automatically to matches. New rules don't run automatically -- tell the user to trigger detection from the Rules page.",
+        "Create a new email rule. Provide a name and at least one of: conditions (deterministic field/operator/value checks on fromAddress/fromName/toAddress/subject/labels) or aiPrompt (a natural-language description evaluated by AI). If both are given, conditionalOperator controls how they combine: 'AND' (default) means conditions act as a cheap pre-filter and the AI prompt only runs on what already passed; 'OR' means either alone is enough to match. Optionally specify actions (label/archive/markRead/star/delete) to apply automatically to matches. 'delete' moves matches to Trash (recoverable there, not a permanent erase). New rules don't run automatically -- tell the user to trigger detection from the Rules page.",
       inputSchema: z.object({
         name: z.string().min(1),
         conditions: z.array(conditionShape).optional(),

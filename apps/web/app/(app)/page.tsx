@@ -1,5 +1,6 @@
 import { prisma } from "@imap-ai/core/db";
 import { ThreadList } from "@/components/thread-list";
+import { MailSearch } from "@/components/mail-search";
 import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
 import { Button } from "@/components/ui/button";
 import { triggerBackfill, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
@@ -42,6 +43,7 @@ export default async function HomePage() {
       <BackgroundRunsPanel initialRuns={backgroundRuns} fetchRuns={getLatestHomeBackgroundRuns} />
 
       <div className="mt-6">
+        <MailSearch />
         <ThreadList
           messages={threadMessages}
           totalCount={threadCounts.total}

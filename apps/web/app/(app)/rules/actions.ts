@@ -32,6 +32,7 @@ function parseActionsFromForm(formData: FormData): RuleActions | null {
   if (formData.get("action_archive")) actions.push({ type: "archive" });
   if (formData.get("action_markRead")) actions.push({ type: "markRead" });
   if (formData.get("action_star")) actions.push({ type: "star" });
+  if (formData.get("action_delete")) actions.push({ type: "delete" });
   if (actions.length === 0) return null;
   return ruleActionsSchema.parse(actions);
 }
