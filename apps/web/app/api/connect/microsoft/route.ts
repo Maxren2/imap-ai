@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
+import { getRequestOrigin } from "@/lib/request-origin";
 
 export async function GET(request: Request) {
   await requireUser();
+
+  const origin = getRequestOrigin(request);
 
   // See the matching comment in api/connect/google/route.ts: a missing
   // client id is a real, expected "this provider isn't configured" case,
@@ -12,11 +15,11 @@ export async function GET(request: Request) {
   // that unrelated pages broke until a restart.
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   if (!clientId) {
-    return NextResponse.redirect(new URL("/add-account?error=microsoft_not_configured", request.url));
+    return NextResponse.redirect(new URL("/add-account?error=microsoft_not_configured", origin));
   }
 
   const tenant = process.env.MICROSOFT_TENANT || "common";
-  const redirectUri = new URL("/api/connect/microsoft/callback", request.url).toString();
+  const redirectUri = new URL("/api/connect/microsoft/callback", origin).toString();
   const state = await createOAuthState("microsoft_oauth_state");
 
   const params = new URLSearchParams({

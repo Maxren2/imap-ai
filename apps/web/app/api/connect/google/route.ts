@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
+import { getRequestOrigin } from "@/lib/request-origin";
 
 export async function GET(request: Request) {
   await requireUser(); // redirects to /login if not signed in
+
+  const origin = getRequestOrigin(request);
 
   // A missing GOOGLE_CLIENT_ID/SECRET means the operator hasn't configured
   // Gmail OAuth for this instance -- a real, expected case (not every
@@ -16,10 +19,10 @@ export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL("/add-account?error=google_not_configured", request.url));
+    return NextResponse.redirect(new URL("/add-account?error=google_not_configured", origin));
   }
 
-  const client = new OAuth2Client(clientId, clientSecret, new URL("/api/connect/google/callback", request.url).toString());
+  const client = new OAuth2Client(clientId, clientSecret, new URL("/api/connect/google/callback", origin).toString());
 
   const state = await createOAuthState("google_oauth_state");
 

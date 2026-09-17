@@ -4,6 +4,7 @@ import { encryptSecret } from "@imap-ai/core/crypto";
 import { prisma } from "@imap-ai/core/db";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
+import { getRequestOrigin } from "@/lib/request-origin";
 
 // Decodes (does NOT cryptographically verify) a JWT payload. Safe here
 // specifically because this id_token was never exposed to the browser --
@@ -21,21 +22,25 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 export async function GET(request: Request) {
   const user = await requireUser();
   const url = new URL(request.url);
+  const origin = getRequestOrigin(request);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
   if (error) {
-    return NextResponse.redirect(new URL(`/add-account?error=${encodeURIComponent(error)}`, url));
+    return NextResponse.redirect(new URL(`/add-account?error=${encodeURIComponent(error)}`, origin));
   }
 
   const stateOk = await verifyOAuthState("microsoft_oauth_state", state);
   if (!stateOk || !code) {
-    return NextResponse.redirect(new URL("/add-account?error=invalid_state", url));
+    return NextResponse.redirect(new URL("/add-account?error=invalid_state", origin));
   }
 
   const tenant = process.env.MICROSOFT_TENANT || "common";
-  const redirectUri = new URL("/api/connect/microsoft/callback", url).toString();
+  // Must exactly match the redirect_uri the initial authorize request used
+  // (see ../route.ts) -- Microsoft validates the two against each other
+  // during the token exchange below.
+  const redirectUri = new URL("/api/connect/microsoft/callback", origin).toString();
 
   const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
     method: "POST",
@@ -52,18 +57,18 @@ export async function GET(request: Request) {
 
   if (!tokenResponse.ok) {
     console.error("Microsoft token exchange failed:", await tokenResponse.text());
-    return NextResponse.redirect(new URL("/add-account?error=token_exchange_failed", url));
+    return NextResponse.redirect(new URL("/add-account?error=token_exchange_failed", origin));
   }
 
   const tokens = (await tokenResponse.json()) as { refresh_token?: string; id_token?: string };
   if (!tokens.refresh_token || !tokens.id_token) {
-    return NextResponse.redirect(new URL("/add-account?error=no_refresh_token", url));
+    return NextResponse.redirect(new URL("/add-account?error=no_refresh_token", origin));
   }
 
   const claims = decodeJwtPayload(tokens.id_token);
   const email = (claims.email as string | undefined) ?? (claims.preferred_username as string | undefined);
   if (!email) {
-    return NextResponse.redirect(new URL("/add-account?error=no_email", url));
+    return NextResponse.redirect(new URL("/add-account?error=no_email", origin));
   }
 
   await prisma.emailAccount.upsert({
@@ -72,5 +77,5 @@ export async function GET(request: Request) {
     create: { userId: user.id, email, provider: "outlook", oauthRefreshTokenEnc: encryptSecret(tokens.refresh_token) },
   });
 
-  return NextResponse.redirect(new URL("/", url));
+  return NextResponse.redirect(new URL("/", origin));
 }
