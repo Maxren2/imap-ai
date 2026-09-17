@@ -28,8 +28,9 @@ import type { RuleActions } from "./actions.js";
  * see rules/sending-actions.ts) -- not defaulted on here, since unlike a
  * label, it costs a real AI call and writes a real Drafts entry per match.
  *
- * Safe to re-run: upserts by name. All disabled by default so nothing
- * gets auto-archived until you've reviewed what they'd catch.
+ * Safe to re-run: upserts by name. Enabled by default -- the user asked
+ * for these to be active out of the box rather than needing a manual
+ * per-rule opt-in after every first link.
  */
 async function main() {
   const accounts = await resolveAccounts();
@@ -80,10 +81,10 @@ async function main() {
     for (const { name, aiPrompt, actions } of rules) {
       await prisma.rule.upsert({
         where: { accountId_name: { accountId: account.id, name } },
-        update: { aiPrompt, actions, enabled: false },
-        create: { accountId: account.id, name, aiPrompt, actions, enabled: false },
+        update: { aiPrompt, actions, enabled: true },
+        create: { accountId: account.id, name, aiPrompt, actions, enabled: true },
       });
-      console.log(`[${account.email}] Upserted rule "${name}" (disabled -- enable it once you've reviewed what it'd catch).`);
+      console.log(`[${account.email}] Upserted rule "${name}" (enabled).`);
     }
   }
 }

@@ -1,15 +1,17 @@
 import "./env.js";
 import { connectAccountImap } from "./mail-provider.js";
-import { backfillOlderMessages } from "./mailbox-sync.js";
+import { backfillOlderMessages, resolveBackfillSince } from "./mailbox-sync.js";
 import { resolveAccounts } from "./account-scope.js";
 import { prisma } from "./db.js";
 
 /**
- * Fetches everything a date-bounded first sync (SYNC_BACKFILL_DAYS) left
- * behind, working backward until fully caught up. Loops over every linked
- * account (or just one via ACCOUNT_ID/--account, see account-scope.ts) --
- * the web UI's "Sync full history" button passes the account it was
- * clicked from.
+ * Fetches older mail left behind by a date-bounded first sync, working
+ * backward until it's caught up as far as the account's own configured
+ * sync depth (see /settings, EmailAccount.syncDepthDays -- 0 means "all",
+ * full history). Loops over every linked account (or just one via
+ * ACCOUNT_ID/--account, see account-scope.ts) -- the web UI's Settings
+ * page's "Apply" button passes the account it was clicked from, after
+ * updating that account's syncDepthDays.
  */
 async function main() {
   const accounts = await resolveAccounts();
@@ -28,6 +30,7 @@ async function main() {
         const lock = await client.getMailboxLock(mailboxName);
         try {
           const { totalFetched, complete } = await backfillOlderMessages(client, account.id, mailboxName, {
+            sinceCutoff: resolveBackfillSince(account.syncDepthDays),
             onProgress: ({ fetchedThisRun, remainingBeforeUid }) => {
               console.log(
                 `  Backfilled ${fetchedThisRun} message(s) so far` +

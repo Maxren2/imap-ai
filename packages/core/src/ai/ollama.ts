@@ -92,6 +92,11 @@ export interface AiDraftInput {
   fromAddress: string | null;
   fromName: string | null;
   body: string | null;
+  // Plain-text calendar availability/busy-times block (see
+  // calendar/availability.ts's buildAvailabilityContext) -- undefined
+  // when the account's owner has no calendar connected, in which case
+  // nothing calendar-related is added to the prompt at all.
+  availabilityContext?: string;
 }
 
 /**
@@ -125,6 +130,7 @@ export async function generateReplyDraft(config: OllamaConfig, input: AiDraftInp
             `Original email from: ${input.fromName ? `${input.fromName} <${input.fromAddress ?? ""}>` : (input.fromAddress ?? "(unknown)")}`,
             `Subject: ${input.subject ?? "(no subject)"}`,
             `Body: ${input.body ? input.body.slice(0, MAX_BODY_CHARS_IN_PROMPT) : "(no body available)"}`,
+            ...(input.availabilityContext ? ["", "Calendar availability -- if this reply involves scheduling, propose real times from this instead of vague availability:", input.availabilityContext] : []),
             "",
             "Write the reply body now.",
           ].join("\n"),

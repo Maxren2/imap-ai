@@ -27,6 +27,49 @@ model User {
   role          String         @default("user")
   createdAt     DateTime       @default(now())
   emailAccounts EmailAccount[]
+
+  // Weekly availability window for calendar-aware scheduling replies (see
+  // CalendarConnection below) -- a single flat window applied to every
+  // listed weekday, not a full per-day schedule: simpler to configure and
+  // enough to let the AI propose real free times instead of vague ones.
+  // Null/empty means "not configured yet" -- draft/autoReply generation
+  // still includes upcoming calendar events (busy times) if any calendars
+  // are connected, just without a preferred window to suggest slots from.
+  availabilityTimezone String?
+  availabilityDays     String[] @default([])
+  availabilityStart    String?
+  availabilityEnd      String?
+
+  calendarConnections CalendarConnection[]
+}
+
+// A read-only calendar grant used only to check availability when
+// drafting scheduling replies (see packages/core/src/calendar/) -- NOT
+// mail access, and deliberately separate from EmailAccount: linking a
+// mailbox for IMAP/SMTP and linking a calendar for availability are
+// different grants a user might want independently (e.g. a personal
+// Gmail calendar while their linked mailbox is a work IMAP account).
+// Reuses the same GOOGLE_CLIENT_ID/SECRET / MICROSOFT_CLIENT_ID/SECRET
+// registered OAuth apps as mail linking, just with a calendar-only scope
+// requested on this grant (calendar.readonly / Calendars.Read) -- see
+// DESIGN.md for why full Gmail API / Graph mail access is otherwise
+// avoided; this is a narrow, explicit exception for calendar data only,
+// which has no IMAP equivalent.
+model CalendarConnection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "google" | "microsoft"
+  provider  String
+  email     String
+  // Which calendar within the provider account -- "primary" (Google) or
+  // the default calendar (Microsoft) unless the user picks a different
+  // one later; no UI for that yet, always "primary"/"default" for now.
+  calendarId           String
+  oauthRefreshTokenEnc String
+  createdAt            DateTime @default(now())
+
+  @@unique([userId, provider, email])
 }
 
 // A single linked mailbox. Named EmailAccount (not Account) to keep "a
@@ -50,6 +93,13 @@ model EmailAccount {
   // reasoning as Rule.systemType/SenderStatus.status.
   provider  String
   createdAt DateTime @default(now())
+
+  // How far back a first sync/backfill should reach for this account (30/
+  // 90/0), user-configurable from /settings -- see mailbox-sync.ts's
+  // resolveBackfillSince. 0 means "all" (full history), same convention
+  // the old SYNC_BACKFILL_DAYS env var used. Per-account, not per-user: a
+  // person can have several linked mailboxes with different needs.
+  syncDepthDays Int @default(30)
 
   // gmail / outlook (OAuth, XOAUTH2)
   oauthRefreshTokenEnc String?

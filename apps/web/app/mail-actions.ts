@@ -299,17 +299,6 @@ export async function fetchMissingSnippets(messageIds: string[]): Promise<Record
 }
 
 /**
- * Triggers `npm run backfill` (fetches everything the date-bounded first
- * sync left behind, working backward until fully caught up) as a tracked
- * background run -- previously CLI-only. Reuses the same mechanism /rules
- * uses for "Run detection now" (see apps/web/lib/background-run.ts).
- */
-export async function triggerBackfill(): Promise<void> {
-  const account = await getActiveEmailAccount();
-  await runNpmScript("backfill", "backfill", "/", account.id);
-}
-
-/**
  * Triggers `npm run sync` (incremental catch-up: creates the account's
  * Mailbox row on a genuinely first run, then only fetches UIDs newer than
  * the last one seen). Previously CLI-only, and nothing else ever ran it
@@ -344,6 +333,7 @@ export async function cancelRun(runId: string): Promise<void> {
   revalidatePath("/");
   revalidatePath("/rules");
   revalidatePath("/deep-clean");
+  revalidatePath("/settings");
 }
 
 export interface MailSearchResult {

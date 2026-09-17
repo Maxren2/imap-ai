@@ -26,7 +26,7 @@ async function main() {
         const lock = await client.getMailboxLock(mailboxName);
         try {
           const { count, highestUid } = await syncOpenedMailbox(client, account.id, mailboxName, {
-            backfillSince: resolveBackfillSince(),
+            backfillSince: resolveBackfillSince(account.syncDepthDays),
           });
           console.log(`  ${mailboxName}: synced ${count} new message(s), cursor now at UID ${highestUid}.`);
         } finally {

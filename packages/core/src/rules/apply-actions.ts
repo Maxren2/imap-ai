@@ -6,6 +6,7 @@ import { resolveAccounts } from "../account-scope.js";
 import { parseRuleActions, applyRuleActions, isSendingAction, type RuleActions } from "./actions.js";
 import { applySendingActions } from "./sending-actions.js";
 import { resolveOllamaConfig } from "../ai/ollama.js";
+import { buildAvailabilityContext } from "../calendar/availability.js";
 import { ensureMessageBody } from "../body.js";
 import type { EmailAccount } from "../generated/prisma/index.js";
 import type { Transporter } from "nodemailer";
@@ -87,6 +88,11 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
   const lock = await client.getMailboxLock("INBOX");
   const smtpTransport: Transporter | undefined = anySendingAction ? await createAccountSmtpTransport(account) : undefined;
   const ollamaConfig = anySendingAction ? resolveOllamaConfig() : undefined;
+  // Computed once per account per run (not per match) -- calendar events
+  // don't change fast enough within one run to need refetching per
+  // message, and this avoids hammering the Google/Microsoft Calendar API
+  // once per draft/autoReply match.
+  const availabilityContext = anySendingAction ? await buildAvailabilityContext(account.userId).catch(() => undefined) : undefined;
 
   try {
     for (const { rule, pending } of pendingByRule) {
@@ -132,7 +138,7 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
             const bodyText =
               match.message.bodyFetchedAt !== null ? match.message.bodyText : await ensureMessageBody(client, match.message);
             await applySendingActions(
-              { imapClient: client, smtpTransport, fromEmail: account.email, ollamaConfig },
+              { imapClient: client, smtpTransport, fromEmail: account.email, ollamaConfig, availabilityContext },
               {
                 subject: match.message.subject,
                 fromAddress: match.message.fromAddress,

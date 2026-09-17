@@ -20,7 +20,7 @@ async function watchAccount(account: EmailAccount, isShuttingDown: () => boolean
     const lock = await client.getMailboxLock(mailboxName);
     try {
       const initial = await syncOpenedMailbox(client, account.id, mailboxName, {
-        backfillSince: resolveBackfillSince(),
+        backfillSince: resolveBackfillSince(account.syncDepthDays),
       });
       console.log(
         `[${account.email}] ${mailboxName}: caught up (${initial.count} new message(s)), cursor at UID ${initial.highestUid}. Watching for new mail...`,

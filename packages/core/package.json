@@ -1,6 +1,6 @@
 {
   "name": "@imap-ai/core",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -23,7 +23,9 @@
     "./crypto": "./src/crypto.ts",
     "./mail-provider": "./src/mail-provider.ts",
     "./microsoft-oauth": "./src/microsoft-oauth.ts",
-    "./account-scope": "./src/account-scope.ts"
+    "./account-scope": "./src/account-scope.ts",
+    "./calendar/types": "./src/calendar/types.ts",
+    "./calendar/availability": "./src/calendar/availability.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",

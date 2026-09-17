@@ -21,21 +21,17 @@ export async function ensureAccount(userId: string, email: string, provider = "g
   });
 }
 
-const DEFAULT_BACKFILL_DAYS = 30;
-
 /**
- * How far back the *first* sync of a mailbox should reach, based on
- * SYNC_BACKFILL_DAYS ("all" or "0" for full history, unset/invalid falls
- * back to the 30-day default, a positive number for a custom window).
- * Only affects a mailbox's first sync -- see syncOpenedMailbox.
+ * How far back a sync/backfill should reach, based on the account's own
+ * syncDepthDays (a user-configurable setting, see /settings) -- 0 means
+ * "all" (full history), any positive number is a day count. Used both for
+ * a mailbox's first sync (as a cutoff on what gets fetched at all) and for
+ * backfillOlderMessages (as the point where a depth-bounded backfill stops
+ * instead of continuing all the way back to UID 1).
  */
-export function resolveBackfillSince(): Date | undefined {
-  const raw = process.env.SYNC_BACKFILL_DAYS?.trim().toLowerCase();
-  if (raw === "all" || raw === "0") return undefined;
-
-  const days = raw ? Number(raw) : DEFAULT_BACKFILL_DAYS;
-  const effectiveDays = Number.isFinite(days) && days > 0 ? days : DEFAULT_BACKFILL_DAYS;
-  return new Date(Date.now() - effectiveDays * 24 * 60 * 60 * 1000);
+export function resolveBackfillSince(depthDays: number): Date | undefined {
+  if (!Number.isFinite(depthDays) || depthDays <= 0) return undefined;
+  return new Date(Date.now() - depthDays * 24 * 60 * 60 * 1000);
 }
 
 async function upsertMessage(mailboxId: string, message: FetchMessageObject) {
@@ -181,15 +177,22 @@ const BACKFILL_PACE_MS = 500;
 /**
  * Fetches older mail left behind by a date-bounded first sync, working
  * backward in bounded batches (paced, like the bulk-run lessons this
- * project carries over -- see DESIGN.md) until fully caught up. Assumes
- * the caller holds a mailbox lock. Safe to interrupt and resume: progress
- * is persisted after every batch via backfillBeforeUid.
+ * project carries over -- see DESIGN.md) until fully caught up -- or,
+ * when `sinceCutoff` is given, until it's backfilled as far as that date
+ * (the account's configured sync depth, see resolveBackfillSince), not
+ * necessarily to the beginning of the mailbox. Assumes the caller holds a
+ * mailbox lock. Safe to interrupt and resume: progress is persisted after
+ * every batch via backfillBeforeUid.
  */
 export async function backfillOlderMessages(
   client: ImapFlow,
   accountId: string,
   mailboxName: string,
-  options: { onProgress?: (info: { fetchedThisRun: number; remainingBeforeUid: number | null }) => void; maxBatches?: number } = {},
+  options: {
+    onProgress?: (info: { fetchedThisRun: number; remainingBeforeUid: number | null }) => void;
+    maxBatches?: number;
+    sinceCutoff?: Date;
+  } = {},
 ): Promise<{ totalFetched: number; complete: boolean }> {
   let totalFetched = 0;
   let batches = 0;
@@ -208,18 +211,31 @@ export async function backfillOlderMessages(
 
     const rangeEnd = mailboxRow.backfillBeforeUid;
     const rangeStart = Math.max(1, rangeEnd - BACKFILL_BATCH_SIZE + 1);
+    const searchQuery = options.sinceCutoff
+      ? { uid: `${rangeStart}:${rangeEnd}`, since: options.sinceCutoff }
+      : { uid: `${rangeStart}:${rangeEnd}` };
 
+    let fetchedInBatch = 0;
     for await (const message of client.fetch(
-      { uid: `${rangeStart}:${rangeEnd}` },
+      searchQuery,
       { uid: true, envelope: true, flags: true, internalDate: true, threadId: true, labels: true, headers: UNSUBSCRIBE_HEADERS },
     )) {
       await upsertMessage(mailboxRow.id, message);
       totalFetched++;
+      fetchedInBatch++;
     }
     batches++;
 
     const newBoundary = rangeStart - 1;
-    const nowComplete = newBoundary <= 0;
+    // With a cutoff set, a batch that fetched nothing (despite the UID
+    // range itself being non-empty) means every message in it is older
+    // than the cutoff -- IMAP UIDs are assigned in non-decreasing order
+    // as mail arrives, so once that's true, every UID further back will
+    // be too. Treat that the same as reaching UID 1: stop here rather
+    // than paging all the way back through mail outside the configured
+    // window just to keep finding nothing.
+    const reachedCutoff = options.sinceCutoff !== undefined && fetchedInBatch === 0 && newBoundary > 0;
+    const nowComplete = newBoundary <= 0 || reachedCutoff;
     await prisma.mailbox.update({
       where: { id: mailboxRow.id },
       data: { backfillBeforeUid: nowComplete ? null : newBoundary, fullyBackfilled: nowComplete },

@@ -4,7 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Inbox, MessageCircle, Sparkles, MailX, Archive, BarChart3, Hourglass, ShieldOff, Moon, Brush, ShieldCheck } from "lucide-react";
+import {
+  Inbox,
+  MessageCircle,
+  Sparkles,
+  MailX,
+  Archive,
+  BarChart3,
+  Hourglass,
+  ShieldOff,
+  Moon,
+  Brush,
+  ShieldCheck,
+  CalendarDays,
+  Settings,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -43,6 +57,8 @@ export const navItems: NavItem[] = [
   { title: "Inbox", href: "/", icon: Inbox },
   { title: "Chat", href: "/chat", icon: MessageCircle, group: "manage" },
   { title: "Assistant", href: "/rules", icon: Sparkles, group: "manage" },
+  { title: "Calendar", href: "/calendar", icon: CalendarDays, group: "manage" },
+  { title: "Settings", href: "/settings", icon: Settings, group: "manage" },
   { title: "Bulk Unsubscribe", href: "/bulk-unsubscribe", icon: MailX, group: "cleanup" },
   { title: "Bulk Archive", href: "/bulk-archive", icon: Archive, group: "cleanup" },
   { title: "No-Reply", href: "/no-reply", icon: Hourglass, group: "cleanup" },

@@ -21,6 +21,9 @@ export interface SendingActionContext {
   smtpTransport: Transporter;
   fromEmail: string;
   ollamaConfig: OllamaConfig | undefined;
+  // See calendar/availability.ts's buildAvailabilityContext -- undefined
+  // when the account owner has no calendar connected.
+  availabilityContext: string | undefined;
 }
 
 function replyRecipient(message: SendingActionMessage, fromEmail: string): string {
@@ -62,6 +65,7 @@ export async function applySendingActions(
           fromAddress: message.fromAddress,
           fromName: message.fromName,
           body: message.bodyText,
+          availabilityContext: ctx.availabilityContext,
         });
         await saveDraft(ctx.imapClient, ctx.fromEmail, {
           to,
@@ -81,6 +85,7 @@ export async function applySendingActions(
           fromAddress: message.fromAddress,
           fromName: message.fromName,
           body: message.bodyText,
+          availabilityContext: ctx.availabilityContext,
         });
         await sendAndSaveToSent(ctx.smtpTransport, ctx.imapClient, ctx.fromEmail, {
           to,

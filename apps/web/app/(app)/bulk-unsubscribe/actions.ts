@@ -39,6 +39,14 @@ export interface SenderCursor {
  * clause reference an aggregate alias directly (that needs HAVING, and
  * HAVING can't express "less than OR (equal AND tiebreak)" cleanly against
  * a cursor that's already resolved before this query runs).
+ *
+ * Only returns senders with a usable unsubscribe method (one-click, link,
+ * or mailto) on their most recent message -- a sender with none is nothing
+ * this page can act on, so listing it here would just be noise the user
+ * has to scroll past. Filtered in the outer SELECT (after the aggregate
+ * already picked each sender's latest non-null value), not in the CTE's
+ * WHERE, for the same "can't filter on an aggregate alias without HAVING"
+ * reason the cursor above is structured this way.
  */
 export async function listSenders(cursor?: SenderCursor): Promise<SenderRow[]> {
   const account = await getActiveEmailAccount();
@@ -70,9 +78,12 @@ export async function listSenders(cursor?: SenderCursor): Promise<SenderRow[]> {
       GROUP BY "fromAddress"
     )
     SELECT * FROM agg
-    WHERE ${cursor === undefined}
-       OR "messageCount" < ${cursor?.messageCount ?? 0}
-       OR ("messageCount" = ${cursor?.messageCount ?? 0} AND "fromAddress" > ${cursor?.fromAddress ?? ""})
+    WHERE ("listUnsubscribeUrl" IS NOT NULL OR "listUnsubscribeMailto" IS NOT NULL)
+      AND (
+        ${cursor === undefined}
+        OR "messageCount" < ${cursor?.messageCount ?? 0}
+        OR ("messageCount" = ${cursor?.messageCount ?? 0} AND "fromAddress" > ${cursor?.fromAddress ?? ""})
+      )
     ORDER BY "messageCount" DESC, "fromAddress" ASC
     LIMIT ${SENDER_PAGE_SIZE}
   `;
@@ -96,13 +107,29 @@ export async function listSenders(cursor?: SenderCursor): Promise<SenderRow[]> {
   }));
 }
 
+/**
+ * Same "does this sender's latest message carry a usable unsubscribe
+ * method" filter as listSenders -- a plain COUNT(DISTINCT "fromAddress")
+ * would overcount relative to what the page actually lists otherwise.
+ * Mirrors listSenders's ARRAY_AGG-latest-value approach rather than a
+ * cheaper EXISTS, since "latest message's value" (not "any message ever
+ * had one") is what determines listability.
+ */
 export async function countSenders(): Promise<number> {
   const account = await getActiveEmailAccount();
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(DISTINCT "fromAddress") as count
-    FROM "Message"
-    JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
-    WHERE "fromAddress" IS NOT NULL AND "Mailbox"."accountId" = ${account.id}
+    WITH agg AS (
+      SELECT
+        "fromAddress",
+        (ARRAY_AGG("listUnsubscribeUrl" ORDER BY date DESC))[1] AS "listUnsubscribeUrl",
+        (ARRAY_AGG("listUnsubscribeMailto" ORDER BY date DESC))[1] AS "listUnsubscribeMailto"
+      FROM "Message"
+      JOIN "Mailbox" ON "Mailbox".id = "Message"."mailboxId"
+      WHERE "fromAddress" IS NOT NULL AND "Mailbox"."accountId" = ${account.id}
+      GROUP BY "fromAddress"
+    )
+    SELECT COUNT(*) as count FROM agg
+    WHERE "listUnsubscribeUrl" IS NOT NULL OR "listUnsubscribeMailto" IS NOT NULL
   `;
   return Number(rows[0]?.count ?? 0);
 }
