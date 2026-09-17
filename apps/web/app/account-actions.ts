@@ -25,9 +25,23 @@ export async function setActiveAccount(accountId: string): Promise<void> {
   redirect("/");
 }
 
+/**
+ * Deletes one linked mailbox and everything under it (Mailbox/Message/
+ * Rule/Chat, all Cascade in schema.prisma) -- this app's local mirror for
+ * that one inbox only, never the real mailbox on the mail server, and
+ * never the signed-in User itself. `deleteMany` never throws for "no
+ * matching row" on its own (it would silently delete zero rows for an
+ * accountId belonging to a different user, or one that's already gone),
+ * so the count is checked explicitly -- the caller (RemoveAccountButton)
+ * needs a real thrown error to distinguish "genuinely failed" from
+ * "succeeded and redirected".
+ */
 export async function removeAccount(accountId: string): Promise<void> {
   const user = await requireUser();
-  await prisma.emailAccount.deleteMany({ where: { id: accountId, userId: user.id } });
+  const { count } = await prisma.emailAccount.deleteMany({ where: { id: accountId, userId: user.id } });
+  if (count === 0) {
+    throw new Error("Mailbox not found.");
+  }
 
   const cookieStore = await cookies();
   if (cookieStore.get(ACTIVE_ACCOUNT_COOKIE)?.value === accountId) {

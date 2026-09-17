@@ -5,6 +5,7 @@ import { prisma } from "@imap-ai/core/db";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
+import { onAccountLinked } from "@/lib/account-linked";
 
 // Decodes (does NOT cryptographically verify) a JWT payload. Safe here
 // specifically because this id_token was never exposed to the browser --
@@ -71,11 +72,15 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/add-account?error=no_email", origin));
   }
 
-  await prisma.emailAccount.upsert({
+  const existing = await prisma.emailAccount.findUnique({ where: { userId_email: { userId: user.id, email } } });
+  const account = await prisma.emailAccount.upsert({
     where: { userId_email: { userId: user.id, email } },
     update: { oauthRefreshTokenEnc: encryptSecret(tokens.refresh_token) },
     create: { userId: user.id, email, provider: "outlook", oauthRefreshTokenEnc: encryptSecret(tokens.refresh_token) },
   });
+
+  // See the matching comment in ../../google/callback/route.ts.
+  await onAccountLinked(account.id, !existing);
 
   return NextResponse.redirect(new URL("/", origin));
 }

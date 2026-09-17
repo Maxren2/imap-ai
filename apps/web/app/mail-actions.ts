@@ -290,11 +290,27 @@ export async function triggerBackfill(): Promise<void> {
   await runNpmScript("backfill", "backfill", "/", account.id);
 }
 
+/**
+ * Triggers `npm run sync` (incremental catch-up: creates the account's
+ * Mailbox row on a genuinely first run, then only fetches UIDs newer than
+ * the last one seen). Previously CLI-only, and nothing else ever ran it
+ * automatically -- linking a mailbox via OAuth/IMAP never triggered a
+ * sync on its own, so a freshly-linked account had no way to ever
+ * populate its inbox short of someone running `npm run sync` by hand
+ * inside the container. `backfill` alone can't fix this either: it needs
+ * an existing Mailbox row (created by sync) to know where to start from,
+ * and throws if one doesn't exist yet.
+ */
+export async function triggerSync(): Promise<void> {
+  const account = await getActiveEmailAccount();
+  await runNpmScript("sync", "sync", "/", account.id);
+}
+
 export type { BackgroundRunRow };
 
 export async function getLatestHomeBackgroundRuns(): Promise<BackgroundRunRow[]> {
   const account = await getActiveEmailAccount();
-  return getLatestBackgroundRuns(account.id, ["backfill"]);
+  return getLatestBackgroundRuns(account.id, ["sync", "backfill"]);
 }
 
 /**

@@ -5,6 +5,7 @@ import { connectAccountImap } from "@imap-ai/core/mail-provider";
 import { prisma } from "@imap-ai/core/db";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
+import { onAccountLinked } from "@/lib/account-linked";
 
 export interface FormState {
   error?: string;
@@ -45,7 +46,8 @@ export async function addImapAccount(_prevState: FormState, formData: FormData):
     return { error: `Could not connect: ${error instanceof Error ? error.message : String(error)}` };
   }
 
-  await prisma.emailAccount.upsert({
+  const existing = await prisma.emailAccount.findUnique({ where: { userId_email: { userId: user.id, email } } });
+  const account = await prisma.emailAccount.upsert({
     where: { userId_email: { userId: user.id, email } },
     update: {
       provider: "imap",
@@ -68,6 +70,9 @@ export async function addImapAccount(_prevState: FormState, formData: FormData):
       smtpPort,
     },
   });
+
+  // See the matching comment in api/connect/google/callback/route.ts.
+  await onAccountLinked(account.id, !existing);
 
   redirect("/");
 }

@@ -3,9 +3,9 @@ import { ThreadList } from "@/components/thread-list";
 import { MailSearch } from "@/components/mail-search";
 import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
 import { Button } from "@/components/ui/button";
-import { triggerBackfill, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
+import { triggerBackfill, triggerSync, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
 import { INBOX_PAGE_SIZE } from "@/lib/constants";
-import { Download } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { getActiveEmailAccount } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -29,17 +29,28 @@ export default async function HomePage() {
         {inbox && !inbox.fullyBackfilled && <> &middot; older mail not yet synced</>}
       </p>
 
-      {inbox && !inbox.fullyBackfilled && (
-        <form action={triggerBackfill} className="mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <form action={triggerSync}>
           <Button type="submit" size="sm" variant="outline">
-            <Download /> Sync full history
+            <RefreshCw /> Sync now
           </Button>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Fetches everything before your account's initial sync window, working backward until fully caught up. Runs in
-            the background — safe to leave this page.
-          </p>
         </form>
-      )}
+        {inbox && !inbox.fullyBackfilled && (
+          <form action={triggerBackfill}>
+            <Button type="submit" size="sm" variant="outline">
+              <Download /> Sync full history
+            </Button>
+          </form>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {!inbox
+          ? "Nothing synced yet -- click Sync now to fetch your mailbox for the first time."
+          : !inbox.fullyBackfilled
+            ? "Sync now catches up on new mail; Sync full history fetches everything before your account's initial sync window, working backward until fully caught up."
+            : "Fetches any new mail since the last sync."}{" "}
+        Runs in the background — safe to leave this page.
+      </p>
       <BackgroundRunsPanel initialRuns={backgroundRuns} fetchRuns={getLatestHomeBackgroundRuns} />
 
       <div className="mt-6">

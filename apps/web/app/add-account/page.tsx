@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Mail, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { listEmailAccounts } from "@/lib/session";
 import { logout } from "@/app/logout-action";
+import { RemoveAccountButton } from "./RemoveAccountButton";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,25 @@ export default async function AddAccountPage({
         <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error] ?? "Something went wrong connecting that account."}
         </p>
+      )}
+
+      {accounts.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-sm font-medium text-muted-foreground">Your linked mailboxes</h2>
+          <div className="mt-2 grid gap-2">
+            {accounts.map((account) => (
+              <div key={account.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm">{account.email}</span>
+                  <Badge variant="outline" className="font-normal capitalize">
+                    {account.provider}
+                  </Badge>
+                </div>
+                <RemoveAccountButton accountId={account.id} email={account.email} />
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="mt-6 grid gap-3">

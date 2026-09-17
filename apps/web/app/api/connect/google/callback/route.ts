@@ -6,6 +6,7 @@ import { prisma } from "@imap-ai/core/db";
 import { verifyOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
+import { onAccountLinked } from "@/lib/account-linked";
 
 export async function GET(request: Request) {
   const user = await requireUser();
@@ -52,11 +53,19 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/add-account?error=no_email", origin));
   }
 
-  await prisma.emailAccount.upsert({
+  const existing = await prisma.emailAccount.findUnique({ where: { userId_email: { userId: user.id, email } } });
+  const account = await prisma.emailAccount.upsert({
     where: { userId_email: { userId: user.id, email } },
     update: { oauthRefreshTokenEnc: encryptSecret(tokens.refresh_token) },
     create: { userId: user.id, email, provider: "gmail", oauthRefreshTokenEnc: encryptSecret(tokens.refresh_token) },
   });
+
+  // Fire-and-forget: the user lands on a real inbox already filling in
+  // (and, on a first link, some sensible default rules already there to
+  // review) instead of a blank page with no indication anything's
+  // happening -- see onAccountLinked's own comment for why sync always
+  // runs but the default rules only seed once.
+  await onAccountLinked(account.id, !existing);
 
   return NextResponse.redirect(new URL("/", origin));
 }
