@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, X } from "lucide-react";
@@ -63,6 +64,7 @@ export function BackgroundRunsPanel({
   const [runs, setRuns] = useState(initialRuns);
   const [isPending, startTransition] = useTransition();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const router = useRouter();
 
   function handleCancel(runId: string) {
     setCancellingId(runId);
@@ -70,6 +72,10 @@ export function BackgroundRunsPanel({
       await cancelRun(runId);
       setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, status: "cancelled" } : r)));
       setCancellingId(null);
+      // A cancelled sync/rules run can still have written real partial
+      // data before it stopped -- refresh so that's reflected rather than
+      // silently left stale until the next unrelated navigation.
+      router.refresh();
     });
   }
 
@@ -88,13 +94,29 @@ export function BackgroundRunsPanel({
   // Polls independently of the above -- once any run is "running" (either
   // from the initial/revalidated props, or from a previous poll tick),
   // keep refetching on an interval until nothing is running anymore.
+  //
+  // Updating `runs` here only ever re-renders this panel -- the actual
+  // data a finished sync/backfill/rules run produced (the inbox's thread
+  // list, its message count, rule match counts, ...) lives in sibling
+  // Server Components on the same page, which this panel has no way to
+  // re-fetch on its own. Found live: "Sync now" correctly showed
+  // "Succeeded" here, but the inbox below it stayed on 0 messages until
+  // the page was manually reloaded. `router.refresh()` re-runs the page's
+  // server-side data fetching in place (no full navigation, scroll
+  // position kept) -- fired only on the actual running -> not-running
+  // transition, not on every poll tick, so it doesn't refetch the page
+  // repeatedly while a run is still in progress.
   useEffect(() => {
     if (!runs.some((run) => run.status === "running")) return;
     const timer = setTimeout(async () => {
-      setRuns(await fetchRuns());
+      const next = await fetchRuns();
+      const stillRunning = new Set(next.filter((r) => r.status === "running").map((r) => r.id));
+      const justFinished = runs.some((r) => r.status === "running" && !stillRunning.has(r.id));
+      setRuns(next);
+      if (justFinished) router.refresh();
     }, POLL_MS);
     return () => clearTimeout(timer);
-  }, [runs, fetchRuns]);
+  }, [runs, fetchRuns, router]);
 
   if (runs.length === 0) return null;
 
