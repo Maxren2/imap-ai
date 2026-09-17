@@ -239,6 +239,25 @@ export async function getInboxThreadCounts(): Promise<{ total: number; unread: n
 }
 
 /**
+ * A cheap "has anything changed" signal for the Inbox's own client-side
+ * poll (components/InboxAutoRefresh.tsx) -- count + the newest inbox
+ * message's timestamp, as one comparable string. Catches both directions:
+ * new mail arriving (bumps the max date) and mail leaving the inbox via
+ * archive/delete/a rule running elsewhere (changes the count). Cheap on
+ * purpose (an indexed MAX + COUNT, no message bodies or joins) since this
+ * runs on a short interval for as long as the Inbox page stays open.
+ */
+export async function getInboxFingerprint(): Promise<string> {
+  const account = await getActiveEmailAccount();
+  const row = await prisma.message.aggregate({
+    where: { inInbox: true, mailbox: { accountId: account.id } },
+    _count: { _all: true },
+    _max: { date: true },
+  });
+  return `${row._count._all}:${row._max.date?.toISOString() ?? ""}`;
+}
+
+/**
  * Fetches (and caches) bodies for messages that don't have one yet, and
  * returns a short snippet per id. Called client-side after the Inbox list
  * mounts, not from the page's own server-rendered request -- doing up to

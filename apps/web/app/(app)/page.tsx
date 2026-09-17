@@ -2,8 +2,16 @@ import { prisma } from "@imap-ai/core/db";
 import { ThreadList } from "@/components/thread-list";
 import { MailSearch } from "@/components/mail-search";
 import { BackgroundRunsPanel } from "@/components/BackgroundRunsPanel";
+import { InboxAutoRefresh } from "@/components/InboxAutoRefresh";
 import { Button } from "@/components/ui/button";
-import { triggerBackfill, triggerSync, getLatestHomeBackgroundRuns, getInboxThreads, getInboxThreadCounts } from "../mail-actions";
+import {
+  triggerBackfill,
+  triggerSync,
+  getLatestHomeBackgroundRuns,
+  getInboxThreads,
+  getInboxThreadCounts,
+  getInboxFingerprint,
+} from "../mail-actions";
 import { INBOX_PAGE_SIZE } from "@/lib/constants";
 import { Download, RefreshCw } from "lucide-react";
 import { getActiveEmailAccount } from "@/lib/session";
@@ -12,16 +20,18 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const account = await getActiveEmailAccount();
-  const [inboxCount, threadCounts, threadMessages, inbox, backgroundRuns] = await Promise.all([
+  const [inboxCount, threadCounts, threadMessages, inbox, backgroundRuns, fingerprint] = await Promise.all([
     prisma.message.count({ where: { inInbox: true, mailbox: { accountId: account.id } } }),
     getInboxThreadCounts(),
     getInboxThreads(),
     prisma.mailbox.findFirst({ where: { name: "INBOX", accountId: account.id } }),
     getLatestHomeBackgroundRuns(),
+    getInboxFingerprint(),
   ]);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
+      <InboxAutoRefresh fingerprint={fingerprint} />
       <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{account.email}</span> &middot; {inboxCount.toLocaleString()} in

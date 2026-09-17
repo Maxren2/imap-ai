@@ -47,4 +47,18 @@ ENTRYPOINT ["./docker-entrypoint.sh"]
 # the container without it. PORT is the conventional env var most
 # container platforms (including TrueNAS's app catalog) set to control the
 # exposed port; -p reads it at container start, not bake time.
-CMD ["sh", "-c", "cd apps/web && npx next start -H 0.0.0.0 -p \"${PORT:-3000}\""]
+#
+# `npm run watch` runs alongside the web server as a background loop --
+# without it, nothing ever pulls new mail into the local mirror on its
+# own at all; the UI's "Sync now"/backfill buttons are the only things
+# that ever ran (see DESIGN.md), so a linked mailbox stayed frozen at
+# whatever it looked like the last time someone clicked one. `watch`
+# already loops over every linked account internally (one IMAP IDLE
+# connection each) and is meant to run forever, so this just restarts it
+# if the process ever exits (a network blip, a provider disconnecting an
+# idle IMAP session, ...) instead of leaving mail permanently unsynced
+# after one transient failure. Deliberately only in the default CMD, not
+# docker-entrypoint.sh itself -- a one-off `docker run <image> npm run
+# backfill` overrides this CMD entirely and shouldn't also spin up a
+# background watch loop for a short-lived script invocation.
+CMD ["sh", "-c", "(while true; do npm run watch; echo 'watch exited, restarting in 5s...' >&2; sleep 5; done) & cd apps/web && npx next start -H 0.0.0.0 -p \"${PORT:-3000}\""]
