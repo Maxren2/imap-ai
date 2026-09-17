@@ -2,7 +2,8 @@ import type { ImapFlow } from "imapflow";
 import type { Transporter } from "nodemailer";
 import { saveDraft, sendAndSaveToSent } from "../smtp.js";
 import { replySubject, forwardSubject, buildForwardBody } from "../mail-format.js";
-import { generateReplyDraft, type OllamaConfig } from "../ai/ollama.js";
+import { generateReplyDraft } from "../ai/ollama.js";
+import type { LlmConfig } from "../ai/llm-config.js";
 import type { RuleAction } from "./actions.js";
 
 export interface SendingActionMessage {
@@ -20,7 +21,7 @@ export interface SendingActionContext {
   imapClient: ImapFlow;
   smtpTransport: Transporter;
   fromEmail: string;
-  ollamaConfig: OllamaConfig | undefined;
+  ollamaConfig: LlmConfig | undefined;
   // See calendar/availability.ts's buildAvailabilityContext -- undefined
   // when the account owner has no calendar connected.
   availabilityContext: string | undefined;
@@ -57,7 +58,7 @@ export async function applySendingActions(
   for (const action of actions) {
     switch (action.type) {
       case "draft": {
-        if (!ctx.ollamaConfig) throw new Error("The draft action needs OLLAMA_BASE_URL/OLLAMA_MODEL configured.");
+        if (!ctx.ollamaConfig) throw new Error("The draft action needs an LLM configured (see /admin/settings).");
         const to = replyRecipient(message, ctx.fromEmail);
         const text = await generateReplyDraft(ctx.ollamaConfig, {
           instructions: action.instructions,
@@ -77,7 +78,7 @@ export async function applySendingActions(
         break;
       }
       case "autoReply": {
-        if (!ctx.ollamaConfig) throw new Error("The auto-reply action needs OLLAMA_BASE_URL/OLLAMA_MODEL configured.");
+        if (!ctx.ollamaConfig) throw new Error("The auto-reply action needs an LLM configured (see /admin/settings).");
         const to = replyRecipient(message, ctx.fromEmail);
         const text = await generateReplyDraft(ctx.ollamaConfig, {
           instructions: action.instructions,

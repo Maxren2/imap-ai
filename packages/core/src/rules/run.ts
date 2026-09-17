@@ -4,7 +4,8 @@ import { connectAccountImap } from "../mail-provider.js";
 import { resolveAccounts } from "../account-scope.js";
 import { parseRuleConditions, type RuleConditions } from "./types.js";
 import { evaluateConditions, type MatchableMessage } from "./evaluate.js";
-import { resolveOllamaConfig, evaluateAiPrompt } from "../ai/ollama.js";
+import { evaluateAiPrompt } from "../ai/ollama.js";
+import { resolveLlmConfigForUser, type LlmConfig } from "../ai/llm-config.js";
 import { ensureMessageBody } from "../body.js";
 import { mapWithConcurrency } from "../async.js";
 import type { ImapFlow } from "imapflow";
@@ -35,7 +36,7 @@ type Candidate = MatchableMessage & {
  * account -- never across accounts, since a connection only ever sees one
  * mailbox.
  */
-async function runRulesForAccount(rules: Rule[], imapClient: ImapFlow | undefined, ollamaConfig: ReturnType<typeof resolveOllamaConfig>) {
+async function runRulesForAccount(rules: Rule[], imapClient: ImapFlow | undefined, ollamaConfig: LlmConfig | undefined) {
   for (const rule of rules) {
     let conditions: RuleConditions | null = null;
     if (rule.conditions) {
@@ -53,7 +54,7 @@ async function runRulesForAccount(rules: Rule[], imapClient: ImapFlow | undefine
     }
     if (rule.aiPrompt && !ollamaConfig) {
       console.warn(
-        `Rule "${rule.name}" has an AI prompt but OLLAMA_BASE_URL/OLLAMA_MODEL aren't configured; no matches will be recorded for it until they are.`,
+        `Rule "${rule.name}" has an AI prompt but no LLM is configured for this account (see /admin/settings); no matches will be recorded for it until one is.`,
       );
     }
 
@@ -189,12 +190,13 @@ async function runRulesForAccount(rules: Rule[], imapClient: ImapFlow | undefine
   }
 }
 
-async function runAccount(account: EmailAccount, ollamaConfig: ReturnType<typeof resolveOllamaConfig>): Promise<void> {
+async function runAccount(account: EmailAccount): Promise<void> {
   const rules = await prisma.rule.findMany({ where: { enabled: true, accountId: account.id } });
   if (rules.length === 0) return;
 
   console.log(`[${account.email}] ${rules.length} enabled rule(s)...`);
 
+  const ollamaConfig = await resolveLlmConfigForUser(account.userId);
   const needsImap = rules.some((rule) => rule.aiPrompt);
 
   // Only connect to IMAP (and only lock INBOX) if some enabled rule
@@ -224,12 +226,10 @@ async function main() {
     return;
   }
 
-  const ollamaConfig = resolveOllamaConfig();
-
   let anyFailed = false;
   for (const account of accounts) {
     try {
-      await runAccount(account, ollamaConfig);
+      await runAccount(account);
     } catch (error) {
       anyFailed = true;
       console.error(`rules:run failed for ${account.email}:`, error);

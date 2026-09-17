@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
@@ -16,12 +17,11 @@ export async function GET(request: Request) {
 
   const origin = getRequestOrigin(request);
 
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const { microsoftClientId: clientId, microsoftTenant: tenant } = await resolveOAuthConfig();
   if (!clientId) {
     return NextResponse.redirect(new URL("/calendar?error=microsoft_not_configured", origin));
   }
 
-  const tenant = process.env.MICROSOFT_TENANT || "common";
   const redirectUri = new URL("/api/connect/microsoft-calendar/callback", origin).toString();
   const state = await createOAuthState("microsoft_calendar_oauth_state");
 

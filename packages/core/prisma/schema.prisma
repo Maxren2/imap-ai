@@ -41,6 +41,93 @@ model User {
   availabilityEnd      String?
 
   calendarConnections CalendarConnection[]
+
+  // Personal override of the org-wide default LLM (InstanceSettings.
+  // defaultLlmModelId) -- see ai/llm-config.ts's resolveLlmConfigForUser.
+  // Null means "use whatever the admin set as default". SetNull (not
+  // Cascade) on the model's own deletion: removing a model an override
+  // pointed to should silently fall back to the org default for that
+  // user, not touch the User row's existence.
+  preferredLlmModelId String?
+  preferredLlmModel   LlmModel? @relation(fields: [preferredLlmModelId], references: [id], onDelete: SetNull)
+}
+
+// An admin-configured connection to an LLM backend -- "ollama" (a base
+// URL, no key) or "openai" (an API key, no base URL needed unless
+// pointed at an OpenAI-compatible server). One provider can expose
+// several selectable LlmModels (see below); the provider row itself
+// isn't directly usable for inference, just the connection details
+// models are fetched/called through.
+model LlmProvider {
+  id     String @id @default(cuid())
+  // "ollama" | "openai" -- plain string (validated in code), same
+  // reasoning as every other small-closed-set field in this schema
+  // (Rule.systemType, EmailAccount.provider, etc.).
+  type   String
+  // Admin-facing label, e.g. "Local Ollama" or "OpenAI (team key)" --
+  // purely cosmetic, doesn't affect behavior.
+  name   String
+  // ollama only -- e.g. "http://ollama:11434". Null for openai (fixed
+  // API base unless overridden below).
+  baseUrl String?
+  // openai only -- an OpenAI-compatible base URL override (self-hosted
+  // vLLM/LiteLLM/etc exposing the same API shape), defaults to OpenAI's
+  // real endpoint in code when null.
+  apiBaseUrl String?
+  // openai only, encrypted with CREDENTIAL_ENCRYPTION_KEY (same as every
+  // other stored credential in this app -- see crypto.ts). Never sent
+  // back to the browser after the initial save; the admin UI only ever
+  // shows whether a key is set, not its value.
+  apiKeyEnc String?
+  createdAt DateTime @default(now())
+  models    LlmModel[]
+}
+
+// One selectable model under a provider -- e.g. "qwen3:8b" on an Ollama
+// provider, or "gpt-4o-mini" on an OpenAI provider. Split from
+// LlmProvider because one provider connection commonly exposes several
+// models an admin wants to offer independently (enable gpt-4o-mini for
+// everyone, keep gpt-4o admin-only by never enabling it here).
+model LlmModel {
+  id              String      @id @default(cuid())
+  providerId      String
+  provider        LlmProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  modelId         String
+  // Whether ordinary users can select this model for themselves (see
+  // User.preferredLlmModelId) -- an admin can register a model without
+  // exposing it yet, review it, then flip this on. Does not affect
+  // whether it can be the org-wide default (InstanceSettings.
+  // defaultLlmModelId) -- an admin can default everyone to a model
+  // without also letting users switch away from it, by leaving this
+  // false.
+  enabledForUsers Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  preferredByUsers User[]
+  defaultFor      InstanceSettings[]
+
+  @@unique([providerId, modelId])
+}
+
+// Single-row table (id is always fixed at "instance") for org-wide
+// settings an admin manages from the GUI instead of editing env vars/the
+// TrueNAS YAML and restarting -- see /admin/settings. Every field here
+// is optional and null means "fall back to the equivalent env var",
+// exactly like today: a fresh deployment with nothing configured in the
+// GUI keeps working unchanged from a plain .env/docker-compose setup.
+// CREDENTIAL_ENCRYPTION_KEY itself is deliberately NOT a field here --
+// it's the key these very fields are encrypted with, so it can only ever
+// come from the environment (see crypto.ts), never be viewable or
+// settable from a GUI it's protecting.
+model InstanceSettings {
+  id                       String    @id @default("instance")
+  googleClientId           String?
+  googleClientSecretEnc    String?
+  microsoftClientId        String?
+  microsoftClientSecretEnc String?
+  microsoftTenant          String?
+  defaultLlmModelId        String?
+  defaultLlmModel          LlmModel? @relation(fields: [defaultLlmModelId], references: [id], onDelete: SetNull)
+  updatedAt                DateTime  @updatedAt
 }
 
 // A read-only calendar grant used only to check availability when

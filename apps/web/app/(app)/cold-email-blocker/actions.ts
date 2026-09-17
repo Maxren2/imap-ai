@@ -3,7 +3,8 @@
 import { prisma } from "@imap-ai/core/db";
 import { connectAccountImap } from "@imap-ai/core/mail-provider";
 import { ensureMessageBody } from "@imap-ai/core/body";
-import { resolveOllamaConfig, evaluateAiPrompt } from "@imap-ai/core/ai/ollama";
+import { evaluateAiPrompt } from "@imap-ai/core/ai/ollama";
+import { resolveLlmConfigForUser } from "@imap-ai/core/ai/llm-config";
 import { revalidatePath } from "next/cache";
 import { getActiveEmailAccount } from "@/lib/session";
 
@@ -70,8 +71,8 @@ export async function testColdEmail(messageId: string): Promise<TestResult> {
   const rule = await prisma.rule.findFirst({ where: { systemType: "COLD_EMAIL", accountId: account.id } });
   if (!rule?.aiPrompt) throw new Error("Cold Email Blocker isn't set up yet.");
 
-  const ollamaConfig = resolveOllamaConfig();
-  if (!ollamaConfig) throw new Error("OLLAMA_BASE_URL/OLLAMA_MODEL aren't configured.");
+  const ollamaConfig = await resolveLlmConfigForUser(account.userId);
+  if (!ollamaConfig) throw new Error("No LLM is configured for this account -- see /admin/settings.");
 
   const message = await prisma.message.findFirstOrThrow({
     where: { id: messageId, mailbox: { accountId: account.id } },

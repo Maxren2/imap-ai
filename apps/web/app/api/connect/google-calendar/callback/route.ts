@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
-import { requireEnv } from "@imap-ai/core/imap-connect";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { encryptSecret } from "@imap-ai/core/crypto";
 import { prisma } from "@imap-ai/core/db";
 import { verifyOAuthState } from "@/lib/oauth-state";
@@ -24,11 +24,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/calendar?error=invalid_state", origin));
   }
 
+  const oauth = await resolveOAuthConfig();
+  if (!oauth.googleClientId || !oauth.googleClientSecret) {
+    return NextResponse.redirect(new URL("/calendar?error=google_not_configured", origin));
+  }
+
   // Must exactly match the redirect_uri the initial authorize request
   // used (see ../route.ts).
   const client = new OAuth2Client(
-    requireEnv("GOOGLE_CLIENT_ID"),
-    requireEnv("GOOGLE_CLIENT_SECRET"),
+    oauth.googleClientId,
+    oauth.googleClientSecret,
     new URL("/api/connect/google-calendar/callback", origin).toString(),
   );
 
@@ -38,7 +43,7 @@ export async function GET(request: Request) {
   }
 
   client.setCredentials(tokens);
-  const ticket = await client.verifyIdToken({ idToken: tokens.id_token!, audience: requireEnv("GOOGLE_CLIENT_ID") });
+  const ticket = await client.verifyIdToken({ idToken: tokens.id_token!, audience: oauth.googleClientId });
   const email = ticket.getPayload()?.email;
   if (!email) {
     return NextResponse.redirect(new URL("/calendar?error=no_email", origin));

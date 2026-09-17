@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
@@ -13,12 +14,11 @@ export async function GET(request: Request) {
   // not something that should throw -- an uncaught exception here was
   // found live to corrupt Turbopack's dev-mode module cache badly enough
   // that unrelated pages broke until a restart.
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const { microsoftClientId: clientId, microsoftTenant: tenant } = await resolveOAuthConfig();
   if (!clientId) {
     return NextResponse.redirect(new URL("/add-account?error=microsoft_not_configured", origin));
   }
 
-  const tenant = process.env.MICROSOFT_TENANT || "common";
   const redirectUri = new URL("/api/connect/microsoft/callback", origin).toString();
   const state = await createOAuthState("microsoft_oauth_state");
 

@@ -19,13 +19,15 @@
     "./unsubscribe": "./src/unsubscribe.ts",
     "./body": "./src/body.ts",
     "./ai/ollama": "./src/ai/ollama.ts",
+    "./ai/llm-config": "./src/ai/llm-config.ts",
     "./text-patterns": "./src/text-patterns.ts",
     "./crypto": "./src/crypto.ts",
     "./mail-provider": "./src/mail-provider.ts",
     "./microsoft-oauth": "./src/microsoft-oauth.ts",
     "./account-scope": "./src/account-scope.ts",
     "./calendar/types": "./src/calendar/types.ts",
-    "./calendar/availability": "./src/calendar/availability.ts"
+    "./calendar/availability": "./src/calendar/availability.ts",
+    "./instance-config": "./src/instance-config.ts"
   },
   "scripts": {
     "imap-test": "tsx src/imap-test.ts",

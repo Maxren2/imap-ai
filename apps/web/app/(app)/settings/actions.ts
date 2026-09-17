@@ -82,3 +82,43 @@ export async function updateAvailability(data: AvailabilityData): Promise<void> 
   });
   revalidatePath("/settings");
 }
+
+export interface LlmModelOption {
+  id: string;
+  label: string;
+}
+
+export interface LlmPreferenceData {
+  options: LlmModelOption[];
+  preferredModelId: string | null;
+  defaultModelLabel: string | null;
+}
+
+/**
+ * Only models an admin has flipped `enabledForUsers` on show up as
+ * choices here -- an admin can register/default a model without
+ * offering it for users to switch to themselves (see LlmModel's schema
+ * comment). `defaultModelLabel` is shown so "Use instance default"
+ * reads as an actual choice ("Use instance default (Local Ollama:
+ * qwen3:8b)") instead of a mystery option.
+ */
+export async function getLlmPreference(): Promise<LlmPreferenceData> {
+  const user = await requireUser();
+  const [row, models, settings] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { preferredLlmModelId: true } }),
+    prisma.llmModel.findMany({ where: { enabledForUsers: true }, include: { provider: true }, orderBy: { createdAt: "asc" } }),
+    prisma.instanceSettings.findUnique({ where: { id: "instance" }, include: { defaultLlmModel: { include: { provider: true } } } }),
+  ]);
+
+  return {
+    options: models.map((m) => ({ id: m.id, label: `${m.provider.name}: ${m.modelId}` })),
+    preferredModelId: row.preferredLlmModelId,
+    defaultModelLabel: settings?.defaultLlmModel ? `${settings.defaultLlmModel.provider.name}: ${settings.defaultLlmModel.modelId}` : null,
+  };
+}
+
+export async function updateLlmPreference(modelId: string | null): Promise<void> {
+  const user = await requireUser();
+  await prisma.user.update({ where: { id: user.id }, data: { preferredLlmModelId: modelId } });
+  revalidatePath("/settings");
+}

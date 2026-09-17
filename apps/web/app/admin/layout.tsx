@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { ArrowLeft, LogOut, Users, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/session";
 import { logout } from "@/app/logout-action";
@@ -26,6 +26,18 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             i
           </div>
           <span className="font-semibold">imap-ai admin</span>
+          <nav className="ml-4 flex items-center gap-1">
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/admin/users">
+                <Users /> Users
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/admin/settings">
+                <Settings /> Settings
+              </Link>
+            </Button>
+          </nav>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild size="sm" variant="ghost">

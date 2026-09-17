@@ -1,5 +1,5 @@
 import { decryptSecret } from "../crypto";
-import { requireEnv } from "../imap-connect";
+import { resolveOAuthConfig } from "../instance-config";
 import type { CalendarConnection } from "../generated/prisma/index.js";
 import type { CalendarEvent } from "./types";
 
@@ -26,14 +26,17 @@ interface GraphEventsResponse {
  * explicit exception.
  */
 export async function listMicrosoftCalendarEvents(connection: CalendarConnection, from: Date, to: Date): Promise<CalendarEvent[]> {
-  const tenant = process.env.MICROSOFT_TENANT || "common";
+  const oauth = await resolveOAuthConfig();
+  if (!oauth.microsoftClientId || !oauth.microsoftClientSecret) {
+    throw new Error("Microsoft OAuth isn't configured -- see /admin/settings.");
+  }
 
-  const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+  const tokenResponse = await fetch(`https://login.microsoftonline.com/${oauth.microsoftTenant}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: requireEnv("MICROSOFT_CLIENT_ID"),
-      client_secret: requireEnv("MICROSOFT_CLIENT_SECRET"),
+      client_id: oauth.microsoftClientId,
+      client_secret: oauth.microsoftClientSecret,
       refresh_token: decryptSecret(connection.oauthRefreshTokenEnc),
       grant_type: "refresh_token",
       scope: "https://graph.microsoft.com/Calendars.Read offline_access",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireEnv } from "@imap-ai/core/imap-connect";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { encryptSecret } from "@imap-ai/core/crypto";
 import { prisma } from "@imap-ai/core/db";
 import { verifyOAuthState } from "@/lib/oauth-state";
@@ -37,18 +37,22 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/add-account?error=invalid_state", origin));
   }
 
-  const tenant = process.env.MICROSOFT_TENANT || "common";
+  const oauth = await resolveOAuthConfig();
+  if (!oauth.microsoftClientId || !oauth.microsoftClientSecret) {
+    return NextResponse.redirect(new URL("/add-account?error=microsoft_not_configured", origin));
+  }
+
   // Must exactly match the redirect_uri the initial authorize request used
   // (see ../route.ts) -- Microsoft validates the two against each other
   // during the token exchange below.
   const redirectUri = new URL("/api/connect/microsoft/callback", origin).toString();
 
-  const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+  const tokenResponse = await fetch(`https://login.microsoftonline.com/${oauth.microsoftTenant}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: requireEnv("MICROSOFT_CLIENT_ID"),
-      client_secret: requireEnv("MICROSOFT_CLIENT_SECRET"),
+      client_id: oauth.microsoftClientId,
+      client_secret: oauth.microsoftClientSecret,
       code,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",

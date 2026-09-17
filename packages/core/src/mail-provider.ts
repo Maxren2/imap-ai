@@ -3,7 +3,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { getGmailAccessToken } from "./gmail-oauth";
 import { getMicrosoftAccessToken } from "./microsoft-oauth";
 import { decryptSecret } from "./crypto";
-import { requireEnv } from "./imap-connect";
+import { resolveOAuthConfig } from "./instance-config";
 import type { EmailAccount } from "./generated/prisma/index.js";
 
 export type ProviderKind = "gmail" | "outlook" | "imap";
@@ -19,20 +19,28 @@ export type MailAccountLike = Pick<
 > &
   Partial<Pick<EmailAccount, "smtpHost" | "smtpPort">>;
 
+function requireOAuthField(value: string | undefined, name: string): string {
+  if (!value) {
+    throw new Error(`${name} isn't configured -- set it from /admin/settings or the equivalent env var.`);
+  }
+  return value;
+}
+
 async function getAccessToken(account: MailAccountLike): Promise<string> {
   const refreshToken = decryptSecret(requireField(account.oauthRefreshTokenEnc, "oauthRefreshTokenEnc"));
+  const oauth = await resolveOAuthConfig();
   if (account.provider === "gmail") {
     return getGmailAccessToken({
-      clientId: requireEnv("GOOGLE_CLIENT_ID"),
-      clientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
+      clientId: requireOAuthField(oauth.googleClientId, "GOOGLE_CLIENT_ID"),
+      clientSecret: requireOAuthField(oauth.googleClientSecret, "GOOGLE_CLIENT_SECRET"),
       refreshToken,
     });
   }
   if (account.provider === "outlook") {
     return getMicrosoftAccessToken({
-      clientId: requireEnv("MICROSOFT_CLIENT_ID"),
-      clientSecret: requireEnv("MICROSOFT_CLIENT_SECRET"),
-      tenant: process.env.MICROSOFT_TENANT || "common",
+      clientId: requireOAuthField(oauth.microsoftClientId, "MICROSOFT_CLIENT_ID"),
+      clientSecret: requireOAuthField(oauth.microsoftClientSecret, "MICROSOFT_CLIENT_SECRET"),
+      tenant: oauth.microsoftTenant,
       refreshToken,
     });
   }

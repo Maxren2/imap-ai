@@ -5,7 +5,7 @@ import { connectAccountImap, createAccountSmtpTransport } from "../mail-provider
 import { resolveAccounts } from "../account-scope.js";
 import { parseRuleActions, applyRuleActions, isSendingAction, type RuleActions } from "./actions.js";
 import { applySendingActions } from "./sending-actions.js";
-import { resolveOllamaConfig } from "../ai/ollama.js";
+import { resolveLlmConfigForUser } from "../ai/llm-config.js";
 import { buildAvailabilityContext } from "../calendar/availability.js";
 import { ensureMessageBody } from "../body.js";
 import type { EmailAccount } from "../generated/prisma/index.js";
@@ -87,7 +87,7 @@ async function applyActionsForAccount(account: EmailAccount): Promise<void> {
   const client = await connectAccountImap(account);
   const lock = await client.getMailboxLock("INBOX");
   const smtpTransport: Transporter | undefined = anySendingAction ? await createAccountSmtpTransport(account) : undefined;
-  const ollamaConfig = anySendingAction ? resolveOllamaConfig() : undefined;
+  const ollamaConfig = anySendingAction ? await resolveLlmConfigForUser(account.userId) : undefined;
   // Computed once per account per run (not per match) -- calendar events
   // don't change fast enough within one run to need refetching per
   // message, and this avoids hammering the Google/Microsoft Calendar API

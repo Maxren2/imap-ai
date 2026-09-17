@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
@@ -18,8 +19,7 @@ export async function GET(request: Request) {
 
   const origin = getRequestOrigin(request);
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const { googleClientId: clientId, googleClientSecret: clientSecret } = await resolveOAuthConfig();
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(new URL("/calendar?error=google_not_configured", origin));
   }

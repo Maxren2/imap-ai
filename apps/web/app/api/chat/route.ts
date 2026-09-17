@@ -1,14 +1,30 @@
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage, type LanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider-v2";
+import { createOpenAI } from "@ai-sdk/openai";
 import { prisma } from "@imap-ai/core/db";
 import { Prisma } from "@imap-ai/core/prisma";
+import { resolveLlmConfigForUser } from "@imap-ai/core/ai/llm-config";
 import { createChatTools } from "@/lib/ai/tools";
 import { getActiveEmailAccount } from "@/lib/session";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
+/**
+ * Builds the AI SDK model instance for whichever LLM this account's owner
+ * is configured to use (their own preference, the org default, or the
+ * legacy env-only fallback -- see resolveLlmConfigForUser). The chat
+ * feature previously only ever talked to one env-configured Ollama
+ * instance; this is the same dynamic resolution rules/apply-actions.ts
+ * already uses for draft/auto-reply generation, applied here too.
+ */
+async function resolveChatModel(userId: string): Promise<LanguageModel> {
+  const config = await resolveLlmConfigForUser(userId);
+  if (!config) {
+    throw new Error("No LLM is configured for this account -- see /admin/settings or /settings.");
+  }
+  if (config.type === "openai") {
+    return createOpenAI({ apiKey: config.apiKey, baseURL: `${config.baseUrl}/v1` })(config.model);
+  }
+  const ollama = createOllama({ baseURL: `${config.baseUrl}/api`, compatibility: "strict" });
+  return ollama(config.model);
 }
 
 const SYSTEM_PROMPT =
@@ -24,10 +40,7 @@ export async function POST(request: Request) {
   const { messages, chatId }: { messages: UIMessage[]; chatId: string } = await request.json();
 
   const account = await getActiveEmailAccount();
-  const ollama = createOllama({
-    baseURL: `${requireEnv("OLLAMA_BASE_URL").replace(/\/$/, "")}/api`,
-    compatibility: "strict",
-  });
+  const model = await resolveChatModel(account.userId);
 
   // The chat row always exists before the first message -- /chat/actions.ts's
   // createChat() creates it and navigates here, and /chat (the index route)
@@ -52,7 +65,7 @@ export async function POST(request: Request) {
   }
 
   const result = streamText({
-    model: ollama(requireEnv("OLLAMA_MODEL")),
+    model,
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
     tools: createChatTools(account.id),

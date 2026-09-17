@@ -1,15 +1,17 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getSyncDepth, getSettingsBackgroundRuns, getAvailability } from "./actions";
+import { getSyncDepth, getSettingsBackgroundRuns, getAvailability, getLlmPreference } from "./actions";
 import { SyncDepthForm } from "./SyncDepthForm";
 import { AvailabilityForm } from "./AvailabilityForm";
+import { LlmPreferenceForm } from "./LlmPreferenceForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [syncDepth, backgroundRuns, availability] = await Promise.all([
+  const [syncDepth, backgroundRuns, availability, llmPreference] = await Promise.all([
     getSyncDepth(),
     getSettingsBackgroundRuns(),
     getAvailability(),
+    getLlmPreference(),
   ]);
 
   return (
@@ -34,6 +36,16 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <AvailabilityForm initial={availability} />
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>AI model</CardTitle>
+          <CardDescription>Overrides the instance default your admin set, for you only.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LlmPreferenceForm initial={llmPreference} />
         </CardContent>
       </Card>
     </main>

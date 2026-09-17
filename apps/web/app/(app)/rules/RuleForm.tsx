@@ -119,7 +119,7 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
           className="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <span className="text-xs text-muted-foreground">
-          Evaluated by your local Ollama model. Needs OLLAMA_BASE_URL/OLLAMA_MODEL configured.
+          Evaluated by your configured LLM (Settings, or your admin's instance default).
         </span>
       </div>
 
@@ -180,8 +180,8 @@ export function RuleForm({ rule }: { rule?: RuleRow }) {
           className="min-h-16 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <span className="text-xs text-muted-foreground">
-          Never sent automatically -- saved to the Drafts folder for you to review and send yourself. Needs
-          OLLAMA_BASE_URL/OLLAMA_MODEL configured.
+          Never sent automatically -- saved to the Drafts folder for you to review and send yourself. Needs an LLM
+          configured.
         </span>
       </div>
 

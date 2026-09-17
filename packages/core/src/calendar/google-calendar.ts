@@ -1,6 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
 import { decryptSecret } from "../crypto";
-import { requireEnv } from "../imap-connect";
+import { resolveOAuthConfig } from "../instance-config";
 import type { CalendarConnection } from "../generated/prisma/index.js";
 import type { CalendarEvent } from "./types";
 
@@ -24,7 +24,11 @@ interface GoogleEventsResponse {
  * Cloud OAuth client id/secret.
  */
 export async function listGoogleCalendarEvents(connection: CalendarConnection, from: Date, to: Date): Promise<CalendarEvent[]> {
-  const client = new OAuth2Client(requireEnv("GOOGLE_CLIENT_ID"), requireEnv("GOOGLE_CLIENT_SECRET"));
+  const oauth = await resolveOAuthConfig();
+  if (!oauth.googleClientId || !oauth.googleClientSecret) {
+    throw new Error("Google OAuth isn't configured -- see /admin/settings.");
+  }
+  const client = new OAuth2Client(oauth.googleClientId, oauth.googleClientSecret);
   client.setCredentials({ refresh_token: decryptSecret(connection.oauthRefreshTokenEnc) });
 
   const { token } = await client.getAccessToken();

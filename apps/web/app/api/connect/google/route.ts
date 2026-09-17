@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
+import { resolveOAuthConfig } from "@imap-ai/core/instance-config";
 import { createOAuthState } from "@/lib/oauth-state";
 import { requireUser } from "@/lib/session";
 import { getRequestOrigin } from "@/lib/request-origin";
@@ -9,15 +10,15 @@ export async function GET(request: Request) {
 
   const origin = getRequestOrigin(request);
 
-  // A missing GOOGLE_CLIENT_ID/SECRET means the operator hasn't configured
-  // Gmail OAuth for this instance -- a real, expected case (not every
-  // deployment wants every provider configured), not a server bug. Redirect
-  // to a friendly message instead of throwing: an uncaught exception here
-  // was found live to leave Turbopack's dev-mode module cache in a state
-  // where unrelated pages (e.g. /login) threw "An unexpected response was
+  // A missing client id/secret means the operator hasn't configured Gmail
+  // OAuth for this instance (via /admin/settings or the GOOGLE_CLIENT_ID/
+  // SECRET env vars) -- a real, expected case (not every deployment wants
+  // every provider configured), not a server bug. Redirect to a friendly
+  // message instead of throwing: an uncaught exception here was found
+  // live to leave Turbopack's dev-mode module cache in a state where
+  // unrelated pages (e.g. /login) threw "An unexpected response was
   // received from the server" until the dev server was restarted.
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const { googleClientId: clientId, googleClientSecret: clientSecret } = await resolveOAuthConfig();
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(new URL("/add-account?error=google_not_configured", origin));
   }
