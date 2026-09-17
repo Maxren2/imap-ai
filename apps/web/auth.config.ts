@@ -12,4 +12,16 @@ export const authConfig = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [],
+  // Auth.js v5 rejects requests whose Host header it doesn't already trust
+  // by default -- fine running bare (host === the port you connected to),
+  // but any reverse proxy in front of the app (TrueNAS's app ingress
+  // included) forwards a different Host than the container's own
+  // 127.0.0.1:<port>, which Auth.js then refuses with UntrustedHost rather
+  // than silently misbehaving. This app has no way to know its final
+  // public origin ahead of time (self-hosted, deployed behind whatever
+  // proxy/domain the operator points at it), so there's no fixed AUTH_URL
+  // to pin -- trusting the incoming Host is the documented fix for
+  // exactly this deployment shape. Confirmed live: TrueNAS deployment
+  // failed every request with this exact error until this was added.
+  trustHost: true,
 } satisfies NextAuthConfig;
