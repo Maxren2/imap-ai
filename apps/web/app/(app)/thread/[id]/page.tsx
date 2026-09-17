@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getThreadMessages } from "@/app/mail-actions";
 import { ReplyBox } from "./ReplyBox";
 import { ForwardButton } from "./ForwardButton";
+import { EmailBody } from "@/components/EmailBody";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
                 <ForwardButton messageId={message.id} subject={message.subject} />
               </div>
             </div>
-            <div className="mt-3 whitespace-pre-wrap text-sm">{message.body ?? "(no body synced yet)"}</div>
+            <EmailBody html={message.bodyHtml} text={message.body} />
           </div>
         ))}
       </div>

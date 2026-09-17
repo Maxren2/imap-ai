@@ -392,6 +392,7 @@ export interface ThreadMessageDetail {
   subject: string | null;
   dateIso: string;
   body: string | null;
+  bodyHtml: string | null;
   isUnread: boolean;
   isSentByMe: boolean;
 }
@@ -399,9 +400,13 @@ export interface ThreadMessageDetail {
 /**
  * Every message in one conversation thread, oldest first, with bodies --
  * the actual "read a message" view this app didn't have before (the mail
- * list only ever showed a short snippet). Missing bodies are fetched
- * lazily over one shared IMAP connection, same "only connect if actually
- * needed" pattern as fetchMissingSnippets.
+ * list only ever showed a short snippet). Missing bodies (text and/or
+ * HTML) are fetched lazily over one shared IMAP connection, same "only
+ * connect if actually needed" pattern as fetchMissingSnippets. Also marks
+ * any unread message in the thread as read -- both the real IMAP \Seen
+ * flag (so it shows read from any other mail client too) and the local
+ * mirror -- since opening a thread is exactly the "I read this" signal a
+ * mail app is supposed to act on; nothing did that before this.
  */
 export async function getThreadMessages(threadId: string): Promise<ThreadMessageDetail[]> {
   const account = await getActiveEmailAccount();
@@ -417,7 +422,9 @@ export async function getThreadMessages(threadId: string): Promise<ThreadMessage
       subject: true,
       date: true,
       bodyText: true,
+      bodyHtml: true,
       bodyFetchedAt: true,
+      bodyHtmlFetchedAt: true,
       flags: true,
       labels: true,
     },
@@ -425,22 +432,49 @@ export async function getThreadMessages(threadId: string): Promise<ThreadMessage
   if (messages.length === 0) return [];
 
   const bodies = new Map(messages.map((m) => [m.id, m.bodyText]));
-  const missing = messages.filter((m) => m.bodyFetchedAt === null);
-  if (missing.length > 0) {
+  const htmlBodies = new Map(messages.map((m) => [m.id, m.bodyHtml]));
+  const bodyMissing = messages.filter((m) => m.bodyFetchedAt === null || m.bodyHtmlFetchedAt === null);
+  // Computed from the query result above, not re-read after the markRead
+  // loop below -- so a message that WAS unread when this thread was
+  // opened still renders as unread for this view (the highlight that
+  // shows "this is the one you hadn't seen yet"), even though its
+  // underlying status is now flipped to read for every other view
+  // (Inbox badge, thread list, etc.) going forward.
+  const unread = messages.filter((m) => !m.flags.includes("\\Seen"));
+
+  if (bodyMissing.length > 0 || unread.length > 0) {
     const client = await connectAccountImap(account);
     const lock = await client.getMailboxLock("INBOX");
     try {
-      for (const message of missing) {
+      for (const message of bodyMissing) {
         try {
           bodies.set(message.id, await ensureMessageBody(client, message));
+          const fresh = await prisma.message.findUnique({ where: { id: message.id }, select: { bodyHtml: true } });
+          htmlBodies.set(message.id, fresh?.bodyHtml ?? null);
         } catch (error) {
           console.error(`Failed to fetch body for message ${message.id}:`, error);
+        }
+      }
+      for (const message of unread) {
+        try {
+          await applyRuleActions(client, message.uid, [{ type: "markRead" }]);
+          await prisma.message.update({ where: { id: message.id }, data: { flags: { push: "\\Seen" } } });
+        } catch (error) {
+          console.error(`Failed to mark message ${message.id} as read:`, error);
         }
       }
     } finally {
       lock.release();
       await client.logout();
     }
+    // No revalidatePath here -- this function runs as part of ThreadPage's
+    // own render, and Next.js explicitly disallows calling revalidatePath
+    // during a render (confirmed live: it throws "used revalidatePath
+    // during render which is unsupported" and crashes the page). Not
+    // needed anyway: the Inbox is force-dynamic, so navigating back to it
+    // re-fetches fresh data on its own -- this only affects other
+    // already-open tabs on the Inbox, which InboxAutoRefresh's poll (see
+    // components/InboxAutoRefresh.tsx) will pick up on its own schedule.
   }
 
   return messages.map((m) => ({
@@ -452,6 +486,7 @@ export async function getThreadMessages(threadId: string): Promise<ThreadMessage
     subject: m.subject,
     dateIso: m.date.toISOString(),
     body: bodies.get(m.id) ?? null,
+    bodyHtml: htmlBodies.get(m.id) ?? null,
     isUnread: !m.flags.includes("\\Seen"),
     isSentByMe: m.labels.includes("\\Sent"),
   }));

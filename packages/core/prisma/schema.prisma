@@ -241,6 +241,17 @@ model Message {
   // fetch that finds no text part, so we don't keep retrying it forever.
   bodyText                    String?
   bodyFetchedAt               DateTime?
+  // Sanitized HTML body (cid: inline images already rewritten to data
+  // URIs, see body.ts) for rendering formatted mail in the thread view --
+  // separate fetch-guard timestamp from bodyFetchedAt/bodyText on
+  // purpose: a message already body-fetched before this field existed has
+  // bodyFetchedAt set but bodyHtmlFetchedAt still null, so it gets
+  // re-fetched exactly once to backfill bodyHtml, instead of either being
+  // stuck on plain-text forever (if reusing bodyFetchedAt as the only
+  // guard) or re-fetched on every open forever (if there were no guard at
+  // all for a message that genuinely has no HTML part).
+  bodyHtml                    String?
+  bodyHtmlFetchedAt           DateTime?
   // Parsed from the List-Unsubscribe/List-Unsubscribe-Post headers (fetched
   // as part of the regular sync -- header-only fetches are cheap, unlike
   // bodies). listUnsubscribeOneClick means the sender supports RFC 8058
